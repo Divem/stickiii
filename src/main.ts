@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, screen, shell } from "electron";
 import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -28,15 +28,20 @@ async function persistNotes(): Promise<void> {
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 1060,
-    height: 720,
-    minWidth: 760,
-    minHeight: 520,
+    width: 440,
+    height: 390,
+    minWidth: 320,
+    minHeight: 260,
+    maxWidth: 760,
+    maxHeight: 860,
     show: false,
     frame: false,
     resizable: true,
+    alwaysOnTop: true,
+    skipTaskbar: false,
+    fullscreenable: false,
     titleBarStyle: "hidden",
-    backgroundColor: "#0d111a",
+    backgroundColor: "#f8f7f3",
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -44,6 +49,8 @@ function createWindow(): void {
       preload: join(__dirname, "preload.js"),
     },
   });
+  mainWindow.setAlwaysOnTop(true, "floating");
+  mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
   const devServerUrl = process.env.VITE_DEV_SERVER_URL;
   if (devServerUrl) {
@@ -59,6 +66,14 @@ function createWindow(): void {
 
 function revealWindow(): void {
   if (!mainWindow) createWindow();
+  if (mainWindow && !mainWindow.isVisible()) {
+    const cursor = screen.getCursorScreenPoint();
+    const display = screen.getDisplayNearestPoint(cursor);
+    const [width, height] = mainWindow.getSize();
+    const x = Math.min(Math.max(cursor.x - Math.round(width / 2), display.bounds.x + 12), display.bounds.x + display.bounds.width - width - 12);
+    const y = Math.min(Math.max(cursor.y + 18, display.bounds.y + 12), display.bounds.y + display.bounds.height - height - 12);
+    mainWindow.setPosition(x, y, false);
+  }
   mainWindow?.show();
   mainWindow?.focus();
 }

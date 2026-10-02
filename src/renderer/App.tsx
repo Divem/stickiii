@@ -1,26 +1,21 @@
 import {
-  Archive,
-  ArrowUpRight,
-  AtSign,
   Check,
-  ChevronDown,
+  ChevronRight,
   CirclePlus,
   File,
   FileText,
   Image as ImageIcon,
   Languages,
-  Link2,
-  Menu,
-  Minus,
+  Layers3,
   MoreHorizontal,
   Paperclip,
-  PanelLeftClose,
-  Search,
+  Pin,
   Send,
   Settings2,
   Sparkles,
   Trash2,
   X,
+  Minus,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { Note, NoteAttachment, SyncProviderId } from "../shared/types.js";
@@ -56,19 +51,21 @@ function formatSize(size: number): string {
 }
 
 function attachmentIcon(attachment: NoteAttachment) {
-  if (attachment.mimeType.startsWith("image/")) return <ImageIcon size={17} />;
-  if (attachment.mimeType.includes("text") || attachment.name.endsWith(".md")) return <FileText size={17} />;
-  return <File size={17} />;
+  if (attachment.mimeType.startsWith("image/")) return <ImageIcon size={16} />;
+  if (attachment.mimeType.includes("text") || attachment.name.endsWith(".md")) return <FileText size={16} />;
+  return <File size={16} />;
 }
+
+type OpenMenu = "notes" | "actions" | "sync" | "settings" | null;
 
 export default function App() {
   const [locale, setLocale] = useState<Locale>("zh");
   const [notes, setNotes] = useState<Note[]>([]);
   const [draft, setDraft] = useState<Note | null>(null);
-  const [query, setQuery] = useState("");
   const [saveState, setSaveState] = useState<"saved" | "saving">("saved");
   const [syncProvider, setSyncProvider] = useState<SyncProviderId>("notion");
   const [toast, setToast] = useState<string | null>(null);
+  const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -76,8 +73,9 @@ export default function App() {
     void window.desktopTabs.listNotes().then((storedNotes) => {
       if (!active) return;
       const sorted = [...storedNotes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-      setNotes(sorted);
-      setDraft(sorted[0] ?? null);
+      const initialNote = sorted[0] ?? createNote();
+      setNotes(sorted.length ? sorted : [initialNote]);
+      setDraft(initialNote);
       setLoaded(true);
     });
     return () => {
@@ -91,6 +89,11 @@ export default function App() {
     return () => window.clearTimeout(timeout);
   }, [toast]);
 
+  const attachmentSignature = useMemo(
+    () => draft?.attachments.map((attachment) => `${attachment.id}:${attachment.name}:${attachment.size}`).join("|") ?? "",
+    [draft?.attachments],
+  );
+
   useEffect(() => {
     if (!loaded || !draft) return;
     setSaveState("saving");
@@ -102,13 +105,7 @@ export default function App() {
       });
     }, 520);
     return () => window.clearTimeout(timeout);
-  }, [draft?.id, draft?.title, draft?.content, draft?.attachments, loaded]);
-
-  const filteredNotes = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) return notes;
-    return notes.filter((note) => `${note.title} ${note.content}`.toLowerCase().includes(normalizedQuery));
-  }, [notes, query]);
+  }, [draft?.id, draft?.title, draft?.content, attachmentSignature, loaded]);
 
   function updateDraft(patch: Partial<Note>): void {
     setDraft((current) => current ? { ...current, ...patch, updatedAt: new Date().toISOString(), syncState: "local" } : current);
@@ -118,7 +115,7 @@ export default function App() {
     const note = createNote();
     setNotes((current) => [note, ...current]);
     setDraft(note);
-    setQuery("");
+    setOpenMenu(null);
   }
 
   async function handleDelete(): Promise<void> {
@@ -127,13 +124,15 @@ export default function App() {
     const remaining = notes.filter((note) => note.id !== draft.id);
     setNotes(remaining);
     setDraft(remaining[0] ?? null);
-    setToast(locale === "zh" ? "记录已删除" : "Note deleted");
+    setOpenMenu(null);
+    setToast(locale === "zh" ? "便签已删除" : "Note deleted");
   }
 
   async function handlePickFiles(): Promise<void> {
     if (!draft) return;
     const picked = await window.desktopTabs.pickFiles();
     if (picked.length) updateDraft({ attachments: [...draft.attachments, ...picked] });
+    setOpenMenu(null);
   }
 
   async function handleOpenAttachment(attachment: NoteAttachment): Promise<void> {
@@ -141,94 +140,68 @@ export default function App() {
     if (error) setToast(t("fileOpenError", locale));
   }
 
-  async function handleSync(): Promise<void> {
+  async function handleSync(provider: SyncProviderId = syncProvider): Promise<void> {
     if (!draft) return;
-    const result = await window.desktopTabs.syncNote(draft, syncProvider);
+    setSyncProvider(provider);
+    setOpenMenu(null);
+    const result = await window.desktopTabs.syncNote(draft, provider);
     if (result.status === "not-configured") setToast(t("syncNotConfigured", locale));
-    else if (result.status === "synced") setToast(`${t("syncSuccess", locale)} ${providerLabels[syncProvider]}`);
+    else if (result.status === "synced") setToast(`${t("syncSuccess", locale)} ${providerLabels[provider]}`);
     else setToast(t("syncError", locale));
   }
 
   return (
-    <main className="app-shell">
+    <main className="app-shell note-window" onClick={() => openMenu && setOpenMenu(null)}>
       <header className="window-bar">
-        <div className="brand-lockup">
-          <div className="brand-mark"><Sparkles size={14} strokeWidth={2.5} /></div>
-          <span className="brand-name">Desk Tabs</span>
-          <span className="brand-slash">/</span>
-          <span className="brand-subtitle">{t("productTagline", locale)}</span>
+        <div className="window-drag-area">
+          <div className="brand-mark"><Sparkles size={13} strokeWidth={2.5} /></div>
+          <span className="window-brand">{t("appName", locale)}</span>
+          <span className="window-separator">·</span>
+          <span className="window-note-name">{draft?.title || t("untitled", locale)}</span>
+          <span className="pinned-badge" title={locale === "zh" ? "窗口始终置顶" : "Always on top"}><Pin size={10} />{locale === "zh" ? "置顶" : "Pinned"}</span>
         </div>
-        <div className="window-drag-space" />
-        <div className="window-tools">
-          <button className="icon-button subtle" aria-label="switch language" onClick={() => setLocale(locale === "zh" ? "en" : "zh")}><Languages size={15} /><span>{locale === "zh" ? "中" : "EN"}</span></button>
-          <button className="icon-button subtle" aria-label={t("minimize", locale)} onClick={() => window.desktopTabs.minimizeWindow()}><Minus size={16} /></button>
-          <button className="icon-button subtle close" aria-label={t("close", locale)} onClick={() => window.desktopTabs.closeWindow()}><X size={16} /></button>
+        <div className="window-tools" onClick={(event) => event.stopPropagation()}>
+          <button className="window-tool" aria-label={locale === "zh" ? "切换语言" : "Switch language"} title={locale === "zh" ? "切换语言" : "Switch language"} onClick={() => setLocale(locale === "zh" ? "en" : "zh")}><Languages size={13} /></button>
+          <button className="window-tool" aria-label={t("minimize", locale)} title={t("minimize", locale)} onClick={() => window.desktopTabs.minimizeWindow()}><Minus size={14} /></button>
+          <button className="window-tool close" aria-label={t("close", locale)} title={t("close", locale)} onClick={() => window.desktopTabs.closeWindow()}><X size={14} /></button>
         </div>
       </header>
 
-      <div className="workspace">
-        <aside className="sidebar">
-          <div className="sidebar-heading">
-            <div><span className="eyebrow">YOUR SPACE</span><h1>{t("allNotes", locale)}</h1></div>
-            <button className="new-note-button" onClick={handleNewNote} aria-label={t("newNote", locale)}><CirclePlus size={18} /></button>
+      <section className="note-surface" onClick={(event) => event.stopPropagation()}>
+        <div className="note-topline">
+          <div className="note-kicker"><span className="kicker-dot" />{locale === "zh" ? "快速记录" : "QUICK NOTE"}<span className={`save-state ${saveState}`}>{saveState === "saved" ? <Check size={11} /> : null}{saveState === "saved" ? t("localSaved", locale) : t("saving", locale)}</span></div>
+          <div className="note-actions">
+            <button className="note-action" aria-label={locale === "zh" ? "切换便签" : "Switch note"} title={locale === "zh" ? "切换便签" : "Switch note"} onClick={() => setOpenMenu(openMenu === "notes" ? null : "notes")}><Layers3 size={15} /></button>
+            <button className="note-action" aria-label={locale === "zh" ? "更多操作" : "More actions"} title={locale === "zh" ? "更多操作" : "More actions"} onClick={() => setOpenMenu(openMenu === "actions" ? null : "actions")}><MoreHorizontal size={16} /></button>
           </div>
-          <div className="search-box"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("searchPlaceholder", locale)} /></div>
-          <div className="sidebar-list">
-            {filteredNotes.length ? filteredNotes.map((note) => (
-              <button key={note.id} className={`note-list-item ${note.id === draft?.id ? "active" : ""}`} onClick={() => setDraft(note)}>
-                <span className="note-list-title">{note.title || t("untitled", locale)}</span>
-                <span className="note-list-preview">{note.content || (note.attachments.length ? `${note.attachments.length} ${t("attachmentCount", locale)}` : t("notePlaceholder", locale))}</span>
-                <span className="note-list-time">{formatTime(note.updatedAt, locale)}</span>
-              </button>
-            )) : <div className="sidebar-empty"><Archive size={19} /><span>{query ? t("noResults", locale) : t("emptyTitle", locale)}</span></div>}
-          </div>
-          <div className="sidebar-footer">
-            <div className="sync-caption"><span>{t("integrations", locale)}</span><span className="connection-dot" /></div>
-            <div className="provider-row">
-              <button className={`provider-chip ${syncProvider === "notion" ? "selected" : ""}`} onClick={() => setSyncProvider("notion")}><span className="notion-glyph">N</span>{t("notion", locale)}</button>
-              <button className={`provider-chip ${syncProvider === "feishu" ? "selected" : ""}`} onClick={() => setSyncProvider("feishu")}><span className="feishu-glyph">飞</span>{t("feishu", locale)}</button>
-            </div>
-            <button className="settings-link"><Settings2 size={15} />{t("comingSoon", locale)}</button>
-          </div>
-        </aside>
+        </div>
 
-        <section className="editor-area">
+        <div className="note-editor">
           {draft ? <>
-            <div className="editor-toolbar">
-              <div className="breadcrumb"><span>{t("allNotes", locale)}</span><span className="breadcrumb-divider">/</span><span className="current-crumb">{draft.title || t("untitled", locale)}</span></div>
-              <div className="editor-actions">
-                <span className={`save-state ${saveState}`}><span className="save-dot" />{saveState === "saved" ? t("localSaved", locale) : t("saving", locale)}</span>
-                <button className="toolbar-button" onClick={handleDelete} aria-label={t("deleteNote", locale)}><Trash2 size={15} /></button>
-                <button className="toolbar-button" aria-label="more actions"><MoreHorizontal size={17} /></button>
-              </div>
-            </div>
-            <div className="editor-scroll">
-              <div className="editor-content">
-                <div className="date-kicker"><span className="date-line" />{formatTime(draft.updatedAt, locale)}<span className="date-line" /></div>
-                <input className="title-input" value={draft.title} onChange={(event) => updateDraft({ title: event.target.value })} placeholder={t("untitled", locale)} />
-                <div className="editor-meta"><span><AtSign size={13} /> quick capture</span><span><Link2 size={13} /> local notebook</span></div>
-                <textarea className="content-input" value={draft.content} onChange={(event) => updateDraft({ content: event.target.value })} placeholder={t("notePlaceholder", locale)} />
+            <input className="note-title" value={draft.title} onChange={(event) => updateDraft({ title: event.target.value })} placeholder={t("untitled", locale)} />
+            <div className="note-date">{formatTime(draft.updatedAt, locale)}</div>
+            <textarea className="note-content" value={draft.content} onChange={(event) => updateDraft({ content: event.target.value })} placeholder={t("notePlaceholder", locale)} />
+            {draft.attachments.length > 0 && <div className="attachment-strip">{draft.attachments.map((attachment) => (
+              <button className="attachment-card" key={attachment.id} onClick={() => void handleOpenAttachment(attachment)} title={attachment.name}>
+                {attachment.previewDataUrl ? <img src={attachment.previewDataUrl} alt={attachment.name} /> : <span className="attachment-icon">{attachmentIcon(attachment)}</span>}
+                <span className="attachment-info"><strong>{attachment.name}</strong><small>{formatSize(attachment.size)}</small></span><ChevronRight size={13} className="attachment-open" />
+              </button>
+            ))}</div>}
+          </> : <div className="empty-note"><Sparkles size={21} /><span>{t("emptyTitle", locale)}</span><button className="inline-new-button" onClick={handleNewNote}>{t("startWriting", locale)}</button></div>}
+        </div>
 
-                {draft.attachments.length > 0 && <div className="attachments-section"><div className="section-label"><Paperclip size={14} />{t("attachmentCount", locale)} {draft.attachments.length}</div><div className="attachment-grid">{draft.attachments.map((attachment) => (
-                  <button className="attachment-card" key={attachment.id} onClick={() => handleOpenAttachment(attachment)}>
-                    {attachment.previewDataUrl ? <img src={attachment.previewDataUrl} alt={attachment.name} /> : <span className="attachment-icon">{attachmentIcon(attachment)}</span>}
-                    <span className="attachment-info"><strong>{attachment.name}</strong><small>{formatSize(attachment.size)}</small></span><ArrowUpRight size={14} className="attachment-open" />
-                  </button>
-                ))}</div></div>}
+        <div className="hover-toolbar" onClick={(event) => event.stopPropagation()}>
+          <button className="hover-tool" aria-label={t("addAttachment", locale)} title={t("addAttachment", locale)} onClick={() => void handlePickFiles()}><Paperclip size={15} /></button>
+          <button className="hover-tool" aria-label={t("sync", locale)} title={t("sync", locale)} onClick={() => setOpenMenu(openMenu === "sync" ? null : "sync")}><Send size={15} /></button>
+          <button className="hover-tool" aria-label={locale === "zh" ? "设置" : "Settings"} title={locale === "zh" ? "设置" : "Settings"} onClick={() => setOpenMenu(openMenu === "settings" ? null : "settings")}><Settings2 size={15} /></button>
+        </div>
 
-                <button className="dropzone" onClick={() => void handlePickFiles()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void handlePickFiles(); }}>
-                  <span className="dropzone-icon"><Paperclip size={17} /></span><span><strong>{t("addAttachment", locale)}</strong><small>{locale === "zh" ? "拖入这里，随手记会帮你收好" : "Drop anything here and keep it close"}</small></span><ChevronDown size={15} className="dropzone-arrow" />
-                </button>
-              </div>
-            </div>
-            <div className="editor-footer">
-              <div className="footer-hint"><PanelLeftClose size={14} />{locale === "zh" ? "随时按 ⌘⇧Space 回到这里" : "Press ⌘⇧Space to come back anytime"}</div>
-              <button className="sync-button" onClick={() => void handleSync()}><Send size={14} />{t("sync", locale)}<span className="sync-provider-label">{providerLabels[syncProvider]}</span></button>
-            </div>
-          </> : <div className="empty-editor"><div className="empty-orbit"><span className="orbit-dot dot-one" /><span className="orbit-dot dot-two" /><Sparkles size={28} /></div><h2>{t("emptyTitle", locale)}</h2><p>{t("emptyDescription", locale)}</p><button className="primary-button" onClick={handleNewNote}><CirclePlus size={17} />{t("startWriting", locale)}</button><div className="shortcut-hint"><Menu size={14} /> {locale === "zh" ? "全局快捷键" : "Global shortcut"} <kbd>⌘⇧Space</kbd></div></div>}
-        </section>
-      </div>
-      {toast && <div className="toast"><Check size={15} />{toast}</div>}
+        {openMenu === "notes" && <div className="popover notes-popover"><div className="popover-title">{locale === "zh" ? "我的便签" : "My notes"}</div>{notes.length ? notes.map((note) => <button key={note.id} className={`popover-note ${note.id === draft?.id ? "selected" : ""}`} onClick={() => { setDraft(note); setOpenMenu(null); }}><span>{note.title || t("untitled", locale)}</span><small>{formatTime(note.updatedAt, locale)}</small></button>) : <span className="popover-muted">{t("emptyTitle", locale)}</span>}</div>}
+        {openMenu === "actions" && <div className="popover actions-popover"><button onClick={handleNewNote}><CirclePlus size={14} />{t("newNote", locale)}</button><button onClick={() => void handleDelete()}><Trash2 size={14} />{t("deleteNote", locale)}</button></div>}
+        {openMenu === "sync" && <div className="popover sync-popover"><div className="popover-title">{locale === "zh" ? "同步到" : "Sync to"}</div><button onClick={() => void handleSync("notion")}><span className="provider-glyph notion-glyph">N</span><span>{t("notion", locale)}</span><ChevronRight size={13} /></button><button onClick={() => void handleSync("feishu")}><span className="provider-glyph feishu-glyph">飞</span><span>{t("feishu", locale)}</span><ChevronRight size={13} /></button></div>}
+        {openMenu === "settings" && <div className="popover settings-popover"><div className="popover-title">{locale === "zh" ? "设置同步渠道" : "Sync settings"}</div><button onClick={() => void handleSync("notion")}><span className="provider-glyph notion-glyph">N</span>{t("notion", locale)}<small>{locale === "zh" ? "点击连接或同步" : "Connect or sync"}</small></button><button onClick={() => void handleSync("feishu")}><span className="provider-glyph feishu-glyph">飞</span>{t("feishu", locale)}<small>{locale === "zh" ? "点击连接或同步" : "Connect or sync"}</small></button></div>}
+      </section>
+      {toast && <div className="toast"><Check size={14} />{toast}</div>}
     </main>
   );
 }

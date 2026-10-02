@@ -17,6 +17,15 @@ test("main process keeps node integration disabled and registers the global shor
   assert.match(source, /contextIsolation: true/);
 });
 
+test("main process creates a small always-on-top note window near the cursor", async () => {
+  const source = await read("src/main.ts");
+  assert.match(source, /width: 440/);
+  assert.match(source, /height: 390/);
+  assert.match(source, /alwaysOnTop: true/);
+  assert.match(source, /getCursorScreenPoint/);
+  assert.match(source, /setVisibleOnAllWorkspaces/);
+});
+
 test("sync providers are explicit and currently return an honest not-configured state", async () => {
   const [notion, feishu] = await Promise.all([read("src/platform/sync/notion.ts"), read("src/platform/sync/feishu.ts")]);
   assert.match(notion, /not-configured/);

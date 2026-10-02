@@ -4,7 +4,7 @@
 
 ## 1. 运行形态
 
-Desk Tabs 使用 Electron 桌面应用承载一个 React 界面。Electron 主进程常驻，负责注册全局快捷键并管理一个无边框、可缩放、置于桌面的记录窗口。窗口关闭按钮执行隐藏，应用本身继续运行，直到用户使用系统退出命令。
+Desk Tabs 使用 Electron 桌面应用承载一个 React 界面。Electron 主进程常驻，负责注册全局快捷键并管理一个约 440×390 的无边框置顶便签窗口。窗口第一次唤起时出现在当前鼠标附近，之后保留用户拖动后的位置；窗口关闭按钮执行隐藏，应用本身继续运行，直到用户使用系统退出命令。
 
 ## 2. 进程边界
 
@@ -22,7 +22,7 @@ Desk Tabs 使用 Electron 桌面应用承载一个 React 界面。Electron 主�
 └───────────────────────────────────────────┘
 ```
 
-- `src/main.ts` 保存 `notes.json`，附件复制到 Electron `userData/attachments/`。
+- `src/main.ts` 保存 `notes.json`，附件复制到 Electron `userData/attachments/`；窗口使用 `alwaysOnTop` 和 `setVisibleOnAllWorkspaces` 保持辅助窗口属性。
 - `src/preload.ts` 只暴露记录、附件、同步和窗口控制方法。
 - `src/shared/types.ts` 是 Note / Attachment / SyncResult 的唯一共享契约。
 - `src/platform/sync/` 用 `NoteSyncAdapter` 隔离 Notion、飞书的认证和 API 差异。
