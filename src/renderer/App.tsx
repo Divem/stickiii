@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { Note, NoteAttachment, SyncProviderId } from "../shared/types.js";
-import { t, type Locale } from "./i18n.js";
+import { t, type Locale, type MessageKey } from "./i18n.js";
 
 const providerLabels: Record<SyncProviderId, string> = { notion: "Notion", feishu: "飞书" };
 
@@ -57,6 +57,17 @@ function attachmentIcon(attachment: NoteAttachment) {
 }
 
 type OpenMenu = "notes" | "actions" | "sync" | "settings" | null;
+type ThemeId = "paper" | "mist" | "sage" | "sky" | "peach" | "lavender" | "ink";
+
+const themeOptions: Array<{ id: ThemeId; labelKey: MessageKey; swatch: string }> = [
+  { id: "paper", labelKey: "themePaper", swatch: "#ffffff" },
+  { id: "mist", labelKey: "themeMist", swatch: "#dfe2e3" },
+  { id: "sage", labelKey: "themeSage", swatch: "#c7d99a" },
+  { id: "sky", labelKey: "themeSky", swatch: "#b9d9ef" },
+  { id: "peach", labelKey: "themePeach", swatch: "#f2c09b" },
+  { id: "lavender", labelKey: "themeLavender", swatch: "#d1b9e9" },
+  { id: "ink", labelKey: "themeInk", swatch: "#343a3e" },
+];
 
 export default function App() {
   const [locale, setLocale] = useState<Locale>("zh");
@@ -67,6 +78,10 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
   const [loaded, setLoaded] = useState(false);
+  const [theme, setTheme] = useState<ThemeId>(() => {
+    const stored = window.localStorage.getItem("desk-tabs-theme");
+    return themeOptions.some((option) => option.id === stored) ? stored as ThemeId : "paper";
+  });
 
   useEffect(() => {
     let active = true;
@@ -88,6 +103,11 @@ export default function App() {
     const timeout = window.setTimeout(() => setToast(null), 3200);
     return () => window.clearTimeout(timeout);
   }, [toast]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    window.localStorage.setItem("desk-tabs-theme", theme);
+  }, [theme]);
 
   const attachmentSignature = useMemo(
     () => draft?.attachments.map((attachment) => `${attachment.id}:${attachment.name}:${attachment.size}`).join("|") ?? "",
@@ -199,7 +219,13 @@ export default function App() {
         {openMenu === "notes" && <div className="popover notes-popover"><div className="popover-title">{locale === "zh" ? "我的便签" : "My notes"}</div>{notes.length ? notes.map((note) => <button key={note.id} className={`popover-note ${note.id === draft?.id ? "selected" : ""}`} onClick={() => { setDraft(note); setOpenMenu(null); }}><span>{note.title || t("untitled", locale)}</span><small>{formatTime(note.updatedAt, locale)}</small></button>) : <span className="popover-muted">{t("emptyTitle", locale)}</span>}</div>}
         {openMenu === "actions" && <div className="popover actions-popover"><button onClick={handleNewNote}><CirclePlus size={14} />{t("newNote", locale)}</button><button onClick={() => void handleDelete()}><Trash2 size={14} />{t("deleteNote", locale)}</button></div>}
         {openMenu === "sync" && <div className="popover sync-popover"><div className="popover-title">{locale === "zh" ? "同步到" : "Sync to"}</div><button onClick={() => void handleSync("notion")}><span className="provider-glyph notion-glyph">N</span><span>{t("notion", locale)}</span><ChevronRight size={13} /></button><button onClick={() => void handleSync("feishu")}><span className="provider-glyph feishu-glyph">飞</span><span>{t("feishu", locale)}</span><ChevronRight size={13} /></button></div>}
-        {openMenu === "settings" && <div className="popover settings-popover"><div className="popover-title">{locale === "zh" ? "设置同步渠道" : "Sync settings"}</div><button onClick={() => void handleSync("notion")}><span className="provider-glyph notion-glyph">N</span>{t("notion", locale)}<small>{locale === "zh" ? "点击连接或同步" : "Connect or sync"}</small></button><button onClick={() => void handleSync("feishu")}><span className="provider-glyph feishu-glyph">飞</span>{t("feishu", locale)}<small>{locale === "zh" ? "点击连接或同步" : "Connect or sync"}</small></button></div>}
+        {openMenu === "settings" && <div className="popover settings-popover">
+          <div className="popover-title">{t("theme", locale)}</div>
+          <div className="theme-grid">{themeOptions.map((option) => <button key={option.id} className={`theme-choice ${theme === option.id ? "selected" : ""}`} onClick={() => setTheme(option.id)}><span className="theme-swatch" style={{ backgroundColor: option.swatch }} /><span>{t(option.labelKey, locale)}</span>{theme === option.id && <Check size={12} />}</button>)}</div>
+          <div className="popover-title settings-section-title">{t("syncSettings", locale)}</div>
+          <button onClick={() => void handleSync("notion")}><span className="provider-glyph notion-glyph">N</span>{t("notion", locale)}<small>{locale === "zh" ? "点击连接或同步" : "Connect or sync"}</small></button>
+          <button onClick={() => void handleSync("feishu")}><span className="provider-glyph feishu-glyph">飞</span>{t("feishu", locale)}<small>{locale === "zh" ? "点击连接或同步" : "Connect or sync"}</small></button>
+        </div>}
       </section>
       {toast && <div className="toast"><Check size={14} />{toast}</div>}
     </main>

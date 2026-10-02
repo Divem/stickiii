@@ -29,6 +29,15 @@ export const messages = {
   syncSuccess: ["已同步到", "Synced to"],
   syncError: ["同步失败，请稍后重试。", "Sync failed. Try again later."],
   fileOpenError: ["无法打开这个文件。", "This file could not be opened."],
+  theme: ["主题风格", "Theme"],
+  themePaper: ["极简白", "Paper white"],
+  themeMist: ["雾灰", "Mist gray"],
+  themeSage: ["鼠尾草绿", "Sage green"],
+  themeSky: ["天空蓝", "Sky blue"],
+  themePeach: ["暖杏色", "Warm peach"],
+  themeLavender: ["淡紫色", "Soft lavender"],
+  themeInk: ["夜墨色", "Ink dark"],
+  syncSettings: ["同步渠道", "Sync channels"],
 } as const;
 
 export type MessageKey = keyof typeof messages;

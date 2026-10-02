@@ -27,6 +27,8 @@ Desk Tabs 使用 Electron 桌面应用承载一个 React 界面。Electron 主�
 - `src/shared/types.ts` 是 Note / Attachment / SyncResult 的唯一共享契约。
 - `src/platform/sync/` 用 `NoteSyncAdapter` 隔离 Notion、飞书的认证和 API 差异。
 
+主题由 renderer 将 `data-theme` 写到 `<html>`，CSS 通过语义变量切换颜色。当前主题 ID 保存在 renderer 的 `localStorage`，不与便签正文混在一起；新增主题只需要增加变量组和主题选项。
+
 ## 3. 数据策略
 
 当前使用单一本地 JSON 文件，适合初始化和低频个人记录。写入时覆盖完整快照，并以 `updatedAt` 排序。附件内容复制到应用数据目录，图片小于 3 MB 时额外存为 data URL 用于即时预览。
