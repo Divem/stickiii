@@ -1,0 +1,30 @@
+# 初始化交接
+
+## 已完成
+
+- 将项目方向确定为跨窗口桌面随手记，而不是浏览器扩展。
+- 建立 Electron 主进程、preload、React renderer 和 shared 类型边界。
+- 实现全局 `Command/Ctrl + Shift + Space` 唤起。
+- 实现标签列表、搜索、记录编辑、本地 JSON 自动保存。
+- 实现图片 / 文件复制到应用数据目录、图片预览、系统打开文件。
+- 预留 Notion / 飞书同步 adapter，并在未配置时显示真实状态。
+- 按 ms-chatpage 的习惯补充 `AGENTS.md`、PRD、技术设计、交接文档、契约测试与 Conventional Commits 约定。
+
+## 验证方式
+
+```bash
+npm run typecheck
+npm run test:contracts
+npm run build
+npm run dev
+```
+
+开发态人工检查：按快捷键唤起窗口；新建记录并输入文本；重新打开窗口确认内容仍在；添加图片和文件确认附件可见；点击同步确认未配置状态被清楚提示。
+
+## 后续实施顺序
+
+1. 增加设置页与安全凭据存储。
+2. 接入一个真实同步目标，优先选择 Notion 或飞书其中一个完成端到端闭环。
+3. 把同步任务改成可恢复队列，并增加远端链接和失败重试。
+4. 增加截图、剪贴板和当前窗口上下文的快速捕获。
+5. 再评估 SQLite、富文本编辑和安装包发布。
