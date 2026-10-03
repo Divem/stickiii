@@ -135,3 +135,22 @@ test("returning ownership accepts the independent window's latest content withou
   await queue.flush("A");
   assert.deepEqual(writes, ["Editing again in main"]);
 });
+
+test("an external saved notification arriving after deletion cannot revive the removed note", async () => {
+  const accepted = [];
+  const queue = new NoteSaveQueue(async (snapshot) => snapshot, (saved) => accepted.push(saved));
+  queue.seed([note("A")]);
+  await queue.remove("A", async () => {});
+  queue.acceptExternal(note("A", "Late independent window notification"));
+  assert.equal(queue.read("A"), undefined);
+  assert.deepEqual(accepted, []);
+  await queue.flush();
+});
+
+test("delayed independent window notifications cannot replace a newer stored snapshot", () => {
+  const queue = new NoteSaveQueue(async (snapshot) => snapshot);
+  const latest = { ...note("A", "Latest"), updatedAt: "2026-10-03T12:01:00Z" };
+  queue.seed([latest]);
+  queue.acceptExternal({ ...latest, content: "Old notification", updatedAt: "2026-10-03T12:00:00Z" });
+  assert.equal(queue.read("A").content, "Latest");
+});

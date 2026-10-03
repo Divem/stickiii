@@ -1,6 +1,6 @@
 {
   "name": "desk-tabs",
-  "displayName": "贴贴便签",
+  "displayName": "Stickiii · 贴贴便签",
   "version": "0.1.0",
   "license": "Apache-2.0",
   "private": true,
@@ -20,7 +20,8 @@
     "typecheck": "tsc --noEmit",
     "check:native": "cargo check --manifest-path src-tauri/Cargo.toml",
     "test:contracts": "node --import tsx --test scripts/*.test.mjs",
-    "test:native": "cargo test --manifest-path src-tauri/Cargo.toml"
+    "test:native": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "test:window-smoke": "node scripts/window-smoke.mjs"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",

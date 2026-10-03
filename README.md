@@ -1,12 +1,12 @@
-# 贴贴便签
+# Stickiii · 贴贴便签
 
 <p align="center">
-  <img src="public/desk-tabs-logo.png" alt="贴贴便签 Logo" width="128" />
+  <img src="public/desk-tabs-logo.png" alt="Stickiii · 贴贴便签 Logo" width="128" />
 </p>
 
 <p align="center">从任意窗口唤起的本地优先桌面随手记。</p>
 
-贴贴便签是一款基于 **Tauri 2 + Rust + React** 的桌面记录工具。按下快捷键即可打开一张可拖动、可缩放的便签，把文字、Markdown、图片或文件先收在本机，再按需整理到飞书文档。
+**Stickiii**（中文名：贴贴便签）是一款基于 **Tauri 2 + Rust + React** 的桌面记录工具。按下快捷键即可打开一张可拖动、可缩放的便签，把文字、Markdown、图片或文件先收在本机，再按需整理到飞书文档。
 
 它适合记录临时想法、会议片段、待办和需要稍后整理的资料。每条记录都是一个可切换的标签，窗口保持轻量，不要求先打开一个完整的知识库应用。
 

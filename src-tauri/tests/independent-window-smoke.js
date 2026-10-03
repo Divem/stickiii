@@ -52,12 +52,16 @@
         });
       } else if (context.noteId === "qa-window-b") {
         setContent(editor, "窗口 B\nCHILD_B_PASS");
-        await wait(async () => (await window.desktopTabs.listNotes())[0].content.includes("CHILD_B_PASS"), "B ready");
-        setContent(editor, "窗口 B\nCHILD_B_PASS\n删除前最新草稿");
+        // Capture runs before the app's close handler, injecting a last
+        // keystroke before its flush without waiting for autosave.
+        window.addEventListener("desk-tabs:window:close-requested", () => {
+          setContent(editor, "窗口 B\nCHILD_B_PASS\n删除前最新草稿");
+        }, { capture: true, once: true });
       } else if (context.noteId === "qa-window-c") {
         setContent(editor, "窗口 C\nCHILD_C_PASS");
         await wait(async () => (await window.desktopTabs.listNotes())[0].content.includes("CHILD_C_PASS"), "C saved");
         setContent(editor, "窗口 C\nCHILD_C_PASS\nRETURN_LATEST");
+        await wait(async () => (await window.desktopTabs.listNotes())[0].content.includes("RETURN_LATEST"), "C latest saved");
         document.querySelector('button[aria-label="更多操作"]').click();
         const back = await wait(() => [...document.querySelectorAll(".actions-popover button")].find((node) => node.textContent === "回到主窗口编辑"), "return action");
         back.click();
@@ -75,6 +79,7 @@
   try {
     if (phase === 2) {
       await wait(async () => (await window.desktopTabs.getWindowContext()).openNoteIds.includes("qa-window-a"), "restored window");
+      await wait(async () => (await window.desktopTabs.getWindowContext()).readyNoteIds.includes("qa-window-a"), "restored renderer ready");
       result.restored = !(await window.desktopTabs.getWindowContext()).openNoteIds.includes("qa-window-b")
         && !(await window.desktopTabs.getWindowContext()).openNoteIds.includes("qa-window-c");
       const a = (await window.desktopTabs.listNotes()).find((note) => note.id === "qa-window-a");
@@ -103,6 +108,7 @@
       let latestBeforeDelete = (await window.desktopTabs.listNotes()).some((note) => note.id === "qa-window-b" && note.content.includes("删除前最新草稿"));
       const dispose = window.desktopTabs.onNoteChanged(({ note }) => { if (note.id === "qa-window-b" && note.content.includes("删除前最新草稿")) latestBeforeDelete = true; });
       await window.desktopTabs.deleteNote("qa-window-b");
+      await wait(() => latestBeforeDelete, "latest B draft saved before deletion");
       dispose();
       result.deleteFlush = latestBeforeDelete;
       result.deletedWindow = !(await window.desktopTabs.getWindowContext()).openNoteIds.includes("qa-window-b")

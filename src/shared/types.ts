@@ -3,7 +3,7 @@ export type FeishuSyncMode = "create" | "append";
 
 export type NoteThemeId = "paper" | "mist" | "sage" | "sky" | "peach" | "lavender" | "ink";
 
-export type NoteWindowContext = { noteId: string | null; openNoteIds: string[]; pinned: boolean };
+export type NoteWindowContext = { noteId: string | null; openNoteIds: string[]; readyNoteIds: string[]; pinned: boolean };
 export type NoteChange = { note: Note; sourceWindow: string };
 
 export type ShortcutActionId = "toggleWindow" | "newNote" | "previousNote" | "nextNote";

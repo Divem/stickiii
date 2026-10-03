@@ -5,6 +5,7 @@ fn main() {
             "save_note",
             "delete_note",
             "get_window_context",
+            "set_window_title",
             "open_note_window",
             "focus_note_window",
             "open_main_window",

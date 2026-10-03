@@ -6,7 +6,7 @@
 
 ## 1. 桌面框架
 
-贴贴便签使用 Tauri 2 + Rust 承载 React 界面。macOS 使用系统 WKWebView，Windows 使用 WebView2，应用不携带 Chromium 或 Node.js。默认窗口约 440×390，无系统标题栏，可拖动、缩放、最小化及隐藏。关闭窗口只隐藏，快捷键与 macOS Dock 可重新唤起；同一应用实例复用原窗口。
+贴贴便签使用 Tauri 2 + Rust 承载 React 界面。macOS 使用系统 WKWebView，Windows 使用 WebView2，应用不携带 Chromium 或 Node.js。默认窗口约 440×390，无系统标题栏，可拖动、缩放、最小化及隐藏。主窗口关闭表示隐藏，快捷键与 macOS Dock 可重新唤起；独立便签窗口关闭前保存，便签仍保留。同一应用实例复用主窗口，每条便签最多拥有一个独立窗口。
 
 唤起时按当前鼠标所在显示器的可用区域放置窗口，使用物理坐标与缩放比例限制边界。置顶通过原生命令切换；macOS 同时切换跨桌面显示。窗口拖动由标题栏空白区域调用原生 start_dragging，按钮不触发拖动。
 
@@ -27,7 +27,7 @@ React + desktop.ts
 - `src-tauri/src/note_windows.rs` 管理独立窗口与便签的对应关系、单窗口编辑归属、布局持久化和多窗口退出确认；独立窗口只接收绑定便签的数据通知。
 - `src-tauri/src/credentials.rs` 保管凭据；`sync.rs` 认证、限流并限制请求路由和文档范围；`ai.rs` 保存独立 AI 配置并执行受限的便签润色请求。
 - `src/renderer/desktop.ts` 保留 window.desktopTabs 的具名产品方法，不向 UI 暴露通用 invoke、文件系统、HTTP 或 shell。
-- `src-tauri/capabilities/main.json` 只授权本地 main 窗口的业务命令及事件监听，不授权远程来源或通用插件命令；CSP 禁止 iframe、对象与表单提交。
+- `src-tauri/capabilities/main.json` 只授权本地 main 窗口的业务命令，不授权远程来源或通用插件命令；窗口通知由 Rust 派发到指定 WebView 内，不通过全局事件监听传递正文；CSP 禁止 iframe、对象与表单提交。
 - `src-tauri/capabilities/note.json` 为原生登记的独立窗口授权当前便签的有限操作，Rust 额外校验来源、便签 ID、附件和同步任务归属；仅匹配窗口名前缀不能通过原生校验。
 - `src/shared/types.ts` 是 Note / Attachment / SyncResult 的共享契约。Rust 以兼容 JSON 格式持久化，保留同步元数据。
 

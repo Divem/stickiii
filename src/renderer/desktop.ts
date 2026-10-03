@@ -1,5 +1,4 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import type { NoteChange, NoteWindowContext } from "../shared/types.js";
 import { createFeishuAdapter } from "../platform/sync/feishu.js";
 import { FeishuApi, FeishuError } from "../platform/sync/feishuApi.js";
@@ -54,13 +53,15 @@ function syncNote(note: Note, provider: SyncProviderId, options?: SyncOptions): 
 }
 
 function subscribe<T>(event: string, callback: (payload: T) => void): () => void {
-  let disposed = false;
-  const pending = listen<T>(event, ({ payload }) => { if (!disposed) callback(payload); });
-  return () => { disposed = true; void pending.then((unlisten) => unlisten()); };
+  const name = `desk-tabs:${event}`;
+  const handler = (event: Event): void => callback((event as CustomEvent<T>).detail);
+  window.addEventListener(name, handler);
+  return () => window.removeEventListener(name, handler);
 }
 
 export const desktopTabs: Window["desktopTabs"] = {
   getWindowContext: () => invoke("get_window_context"),
+  setWindowTitle: (title) => invoke("set_window_title", { title }),
   openNoteWindow: (noteId) => invoke("open_note_window", { noteId }),
   focusNoteWindow: (noteId) => invoke("focus_note_window", { noteId }),
   closeNoteWindow: (saved, returnToMain = false) => invoke("close_note_window", { saved, returnToMain }),
@@ -91,16 +92,8 @@ export const desktopTabs: Window["desktopTabs"] = {
   setPinnedWindow: (pinned) => invoke("set_pinned_window", { pinned }),
   listShortcuts: () => invoke("list_shortcuts"),
   saveShortcuts: (shortcuts) => invoke("save_shortcuts", { shortcuts }),
-  onShortcutAction: (callback) => {
-    let disposed = false;
-    const pending = listen<ShortcutActionId>("shortcut:action", ({ payload }) => { if (!disposed) callback(payload); });
-    return () => { disposed = true; void pending.then((unlisten) => unlisten()); };
-  },
-  onExitRequested: (callback) => {
-    let disposed = false;
-    const pending = listen<string>("app:exit-requested", ({ payload }) => { if (!disposed) callback(payload); });
-    return () => { disposed = true; void pending.then((unlisten) => unlisten()); };
-  },
+  onShortcutAction: (callback) => subscribe<ShortcutActionId>("shortcut:action", callback),
+  onExitRequested: (callback) => subscribe<string>("app:exit-requested", callback),
   completeExit: (saved, requestId) => invoke("complete_exit", { saved, requestId }),
   quitApplication: () => invoke("request_exit"),
   minimizeWindow: () => { void invoke("minimize_window"); },

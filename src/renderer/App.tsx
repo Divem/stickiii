@@ -841,7 +841,9 @@ export default function App({ context }: { context: NoteWindowContext }) {
     if (isSingleNote) return;
     const disposeWindows = window.desktopTabs.onWindowsChanged((next) => { void windowsHandler.current(next); });
     const disposeNotes = window.desktopTabs.onNoteChanged(({ note, sourceWindow }) => {
-      if (sourceWindow !== "main") saveQueue.acceptExternal(note);
+      if (sourceWindow === "main") return;
+      if (!openNoteIdsRef.current.includes(note.id) && saveQueue.isDirty(note.id)) return;
+      saveQueue.acceptExternal(note);
     });
     const disposeActivate = window.desktopTabs.onNoteActivated((id) => {
       const note = saveQueue.read(id);
@@ -930,6 +932,10 @@ export default function App({ context }: { context: NoteWindowContext }) {
 
   const firstLine = draft?.content.split(/\r\n|\n|\r/, 1)[0] ?? "";
   const activeTitle = useMemo(() => getNoteTitle(firstLine), [firstLine]);
+  useEffect(() => {
+    const title = `${activeTitle.slice(0, 160) || t("untitled", locale)} · ${t("appName", locale)}`;
+    void window.desktopTabs.setWindowTitle(title).catch(() => {});
+  }, [activeTitle, locale]);
 
   const saveLabel = t(saveState === "saved" ? "localSaved" : saveState === "error" ? "saveFailed" : "saving", locale);
   const activeSyncFeedback = syncFeedback?.noteId === draft?.id ? syncFeedback : null;

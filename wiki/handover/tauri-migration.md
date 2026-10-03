@@ -4,7 +4,7 @@
 
 贴贴便签的桌面底座改为 Tauri 2 + Rust，保留现有 React 便签界面、Markdown、主题、透明度、附件、四个全局快捷键和飞书 API 同步。Notion 仍为未实现接口；内嵌飞书网页登录编辑仍尚未实现，旧 Electron 技术方案须重新评估。
 
-品牌名已从 Desk Tabs 改为「贴贴便签」，中英文界面使用同一品牌名。macOS 打包生成 `贴贴便签.app` 与 `贴贴便签_<版本>_<架构>.dmg`，DMG 宗卷也使用新品牌名。内部包名 `desk-tabs`、应用标识 `com.dawinyuan.desktabs`、凭据服务名与偏好设置键保持不变，继续读取原有便签、附件、快捷键和凭据。下方验收记录与 `tauri-validation.json` 保留改名前产物的原始证据。
+中文品牌名为「贴贴便签」，英文品牌名为「Stickiii」，替代原英文名 Desk Tabs。应用按界面语言显示对应名称，README、页面标题与 npm 展示名使用「Stickiii · 贴贴便签」。安装包继续使用中文名：macOS 打包生成 `贴贴便签.app` 与 `贴贴便签_<版本>_<架构>.dmg`，DMG 宗卷为「贴贴便签」。内部包名 `desk-tabs`、应用标识 `com.dawinyuan.desktabs`、凭据服务名与偏好设置键保持不变，继续读取原有便签、附件、快捷键和凭据。下方验收记录与 `tauri-validation.json` 保留当时产物的原始证据。
 
 不再安装或打包 Electron、Electron Packager、Node.js 运行环境。飞书连接器复用原有版本检查、章节归属、未知写入恢复和幂等逻辑；Rust 负责认证和实际传输，真实密钥与访问令牌不返回前端。
 

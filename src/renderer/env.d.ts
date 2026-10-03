@@ -4,6 +4,7 @@ declare global {
   interface Window {
     desktopTabs: {
       getWindowContext(): Promise<import("../shared/types").NoteWindowContext>;
+      setWindowTitle(title: string): Promise<void>;
       openNoteWindow(noteId: string): Promise<void>;
       focusNoteWindow(noteId: string): Promise<void>;
       closeNoteWindow(saved: boolean, returnToMain?: boolean): Promise<void>;

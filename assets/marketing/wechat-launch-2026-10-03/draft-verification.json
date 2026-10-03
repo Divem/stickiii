@@ -1,0 +1,43 @@
+{
+  "appmsgid": 509415251,
+  "checks": {
+    "titlePersisted": true,
+    "authorPersisted": true,
+    "digestPersisted": true,
+    "bodyPersisted": true,
+    "imageCount": 3,
+    "imagesPersisted": true,
+    "coverPersisted": true,
+    "sourcePersisted": true,
+    "manualSaveHistory": [
+      "10-03 21:06\t达尔文网页版\t手动保存"
+    ]
+  },
+  "state": {
+    "title": "今天做了「贴贴便签」：随时记下想法，一键积累到飞书",
+    "author": "袁文",
+    "digest": "无论正在用什么软件，按一下快捷键就能记下想法。一键写入飞书，每条笔记独立成文档，或多条汇总到同一篇文档，让零散记录持续积累。",
+    "body": "今天做了一个桌面随手记工具，叫「贴贴便签」。\n\n我想让记录这件事更顺手一点：无论正在用什么软件，有了想法就能马上记下来；这些零散的记录，还能逐渐积累到飞书文档里，成为之后用得上的资料。\n\n很多值得留下的内容，都出现在我们正在做别的事的时候。\n\n开会时听到一个关键结论，看网页时想到一个选题，写代码时发现一个需要处理的问题，或者聊天时突然冒出一个产品思路。它们可能只有一句话，却很容易在继续忙碌的过程中被忘掉。\n\n贴贴便签让你在这些时刻，随手就能开始记录。\n\n按下 ⌘ / Ctrl + Shift + Space，一张小便签就会出现在手边。写下几句话，记完继续做原来的事。需要边看边记时，也可以把它置顶，放在屏幕一角。\n\n便签里的内容会自动保存在本地。你可以写文字、列待办，也可以把相关图片和文件放在同一条记录里。需要进一步整理时，Markdown 编辑和预览可以帮你把标题、列表、表格和代码排清楚。\n\n随手记下来的内容，还能一键写入飞书文档。\n\n这让一条记录有了继续生长的地方。你可以根据内容的用途，选择两种积累方式：\n\n• 一条笔记，一篇飞书文档。一个产品想法、一份讨论提纲、一段值得展开的思考，都可以单独成为文档，方便继续完善和分享。\n\n• 多条笔记，同一篇飞书文档。每条记录作为一个独立章节，集中放进同一篇文档里。会议记录、工作日志、项目随手记，都可以这样持续积累。\n\n比如，你可以准备一篇《项目会议记录》。每次开会时，在便签里记下结论、问题和待办，结束后推送进去。下一次会议，再写一条新的便签，继续放进同一篇文档。\n\n平时看资料时冒出的项目想法，也可以先随手记，再汇总到一篇《项目想法集》。等到真正讨论方案时，之前留下的思考已经集中在一起，可以回看，也可以拿出来和团队讨论。\n\n笔记后续有了补充，再次推送会更新原来的文档或对应章节。同一条想法，可以从几句话开始，一点点补充完整。\n\n对于随手写下的草稿，贴贴便签也提供了 AI 润色、翻译、扩写和解读。记录时先写下要点，之后再改善表达、展开思路，最后把整理好的文字推送到飞书。\n\n我希望贴贴便签用起来，就像放在桌面边角的小本子：想写的时候随手打开，记下当时最重要的内容。\n\n而这些内容，又能进入你日常使用的飞书文档里。今天的一句话、明天的一段补充，慢慢积累成一份会议记录、一篇项目说明，或者一个值得继续做下去的想法。\n\n如果你也经常在工作中临时记东西，或者希望把零散记录集中到飞书里，欢迎试试「贴贴便签」，也欢迎告诉我你的使用感受。\n\n体验入口：https://github.com/Divem/stickiii",
+    "images": [
+      {
+        "src": "https://mmbiz.qpic.cn/mmbiz_png/RPEVPkNuXo88oZCpV9r3ibaiaPGC0V6OOUeVavgm7EHUcvVNTibYiclhtUoZKUB0hDVn6DztAjzxf6AsLpUUFgVGyGfvsxNxEARH1bmq70BEM3E/640?wx_fmt=png&from=appmsg",
+        "id": "509415248"
+      },
+      {
+        "src": "https://mmbiz.qpic.cn/mmbiz_png/RPEVPkNuXoicxicy50OHN4nU85LNh3F8HXF9xJOMmHyDYjSGSCa1Ylwn3WuoibsLoQEIppMUIbRib7V5k1fIkKxicHA0CGrjB059TicQXLAL3kpB8/640?wx_fmt=png&from=appmsg",
+        "id": "509415249"
+      },
+      {
+        "src": "https://mmbiz.qpic.cn/mmbiz_png/RPEVPkNuXo9lkMMWXJqxpsV7Utpp4MuOtOnqEMPfXO3YvrIa15MmMKeibSORkgQzjdv7G9F08icSBftnHdXWKJDSFAOiaytFJwRc3Bm36coHiaE/640?wx_fmt=png&from=appmsg",
+        "id": "509415250"
+      }
+    ],
+    "cover": "url(\"https://mmbiz.qpic.cn/mmbiz_jpg/RPEVPkNuXo9iae33zc5Dsiad4Mt5bADo7Sz44PSqLfjeCficELdvGiaFQ9cCBpIy7UWrcibleMh9qbU5fkibSdQp1qWtianUEvsfVXV7pVa991NzDA/0?wx_fmt=jpeg\")",
+    "sourceUrl": "https://github.com/Divem/stickiii",
+    "sourceEnabled": true
+  },
+  "notes": [
+    "微信重新打开时将正文图片 /0 变为 /640；三个图片文件 ID 与顺序保持一致。",
+    "原文链接持久化在设置标签中；弹出框的输入框为空不表示链接未保存。"
+  ]
+}

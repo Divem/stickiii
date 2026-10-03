@@ -21,11 +21,13 @@ export function hasNoteContent(note: Note): boolean {
 export class NoteSaveQueue {
   private latest = new Map<string, Note>();
   private stored = new Map<string, Note>();
+  private deleted = new Set<string>();
   private tail: Promise<unknown> = Promise.resolve();
 
   constructor(private write: (note: Note) => Promise<Note>, private onSaved: (note: Note) => void = () => {}) {}
 
   seed(notes: Note[]): void {
+    this.deleted.clear();
     this.latest = new Map(notes.map((note) => [note.id, note]));
     this.stored = new Map(this.latest);
   }
@@ -53,6 +55,9 @@ export class NoteSaveQueue {
   // Other windows own these notes. Replace both snapshots so a stale main
   // draft can never become a write after ownership returns to the library.
   acceptExternal(saved: Note): void {
+    if (this.deleted.has(saved.id)) return;
+    const previous = this.stored.get(saved.id);
+    if (previous && Date.parse(saved.updatedAt) < Date.parse(previous.updatedAt)) return;
     this.stored.set(saved.id, saved);
     this.latest.set(saved.id, saved);
     this.onSaved(saved);
@@ -85,6 +90,7 @@ export class NoteSaveQueue {
   remove(id: string, destroy: () => Promise<void>): Promise<void> {
     return this.enqueue(async () => {
       await destroy();
+      this.deleted.add(id);
       this.latest.delete(id);
       this.stored.delete(id);
     });

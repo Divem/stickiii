@@ -1,11 +1,11 @@
 import test, { afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { mockIPC, clearMocks } from "@tauri-apps/api/mocks";
-import { emit } from "@tauri-apps/api/event";
 import { desktopTabs } from "../src/renderer/desktop.ts";
 import { hashText } from "../src/shared/hash.ts";
 
-globalThis.window = { crypto: globalThis.crypto };
+globalThis.window = Object.assign(new EventTarget(), { crypto: globalThis.crypto });
+const emit = async (event, detail) => window.dispatchEvent(new CustomEvent(`desk-tabs:${event}`, { detail }));
 afterEach(() => clearMocks());
 
 const note = { id: "native-note", content: "Title\nbody", attachments: [], createdAt: "", updatedAt: "", syncState: "local" };

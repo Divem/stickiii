@@ -1,11 +1,10 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
-  "description": "仅允许本地便签窗口监听桌面事件；文件、网络和快捷键通过 Rust 的专用命令处理。",
+  "description": "仅允许本地主窗口管理便签库和全局设置；文件、网络、窗口和快捷键通过 Rust 的专用命令处理。",
   "windows": ["main"],
   "permissions": [
-    "allow-get-window-context", "allow-open-note-window", "allow-focus-note-window", "allow-open-main-window",
-    "core:event:allow-listen", "core:event:allow-unlisten",
+    "allow-get-window-context", "allow-set-window-title", "allow-open-note-window", "allow-focus-note-window", "allow-open-main-window",
     "allow-list-notes", "allow-save-note", "allow-delete-note", "allow-pick-files", "allow-open-attachment", "allow-open-external-link",
     "allow-list-sync-configs", "allow-save-sync-config", "allow-clear-sync-config", "allow-list-shortcuts", "allow-save-shortcuts",
     "allow-get-ai-config", "allow-save-ai-config", "allow-clear-ai-config", "allow-polish-note", "allow-ai-note",
