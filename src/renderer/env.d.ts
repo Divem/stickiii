@@ -21,13 +21,14 @@ declare global {
       deleteNote(noteId: string): Promise<void>;
       pickFiles(): Promise<PickedAttachment[]>;
       importAttachment(noteId: string, file: File, imageOnly: boolean): Promise<PickedAttachment>;
+      attachmentPreview(noteId: string, attachmentId: string): Promise<string>;
       openAttachment(storedPath: string): Promise<string>;
       syncNote(note: Note, provider: SyncProviderId, options?: SyncOptions): Promise<SyncResult>;
       openExternalLink(url: string): Promise<boolean>;
-      listSyncConfigs(): Promise<SyncProviderConfig[]>;
+      listSyncConfigs(loadSaved?: boolean): Promise<SyncProviderConfig[]>;
       saveSyncConfig(input: SyncProviderConfigInput): Promise<SyncConfigResult>;
       clearSyncConfig(provider: SyncProviderId): Promise<SyncConfigResult>;
-      getAiConfig(): Promise<AiConfig | null>;
+      getAiConfig(loadSaved?: boolean): Promise<AiConfig | null>;
       saveAiConfig(input: AiConfigInput): Promise<AiConfigResult>;
       clearAiConfig(): Promise<AiConfigResult>;
       testAiConnection(input: AiConfigInput): Promise<AiConnectionResult>;

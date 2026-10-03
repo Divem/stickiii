@@ -51,9 +51,9 @@ renderer 的 `noteSaveQueue.ts` 串行执行本地写入，记录最新草稿与
 
 同步返回 `not-configured`、`not-implemented`、`synced`、`conflict` 或 `error`。飞书已接入真实 API，Notion 仍返回 `not-implemented`。
 
-- `src-tauri/src/credentials.rs` 从 macOS Keychain / Windows Credential Manager 读取凭据；renderer 只接收公开配置。旧 Electron 的加密凭据不自动解密，需要重新填写。
+- `src-tauri/src/credentials.rs` 在用户主动操作时从 macOS Keychain / Windows Credential Manager 读取凭据；renderer 只接收公开配置。启动读取不含密钥的 `sync-configs.public.json`，成功读取的凭据只在 Rust 进程内缓存。旧 Electron 的加密凭据不自动解密，需要重新填写。
 - `desktop.ts` 为原有连接器注入原生 Feishu 传输。Rust 的 `sync.rs` 只访问固定的 `open.feishu.cn/open-apis`，在活动同步任务中校验文档、方法与路由；认证接口不能由 renderer 调用，Secret 和访问令牌不返回前端。每次请求有 20 秒超时和至少 400 ms 间隔，仅对明确限流拒绝退避重试；系统代理的实际行为需在目标网络验收。
-- `feishu.ts` 先将 Markdown 转换为文档块并检查结构，再创建文档、持久化映射、分批写入嵌套块。每批最多 1000 个块，父子结构不跨批拆分；清除表格只读 `merge_info`。
+- `feishu.ts` 先将 Markdown 转换为文档块并检查结构，再创建文档、持久化映射、分批写入嵌套块。每批最多 1000 个块，父子结构不跨批拆分；本地图片和文件附件分别创建 `docx_image`/`docx_file` 块，通过受限素材上传绑定 token；清除表格只读 `merge_info`。
 - `Note.feishu` 保存应用 ID、文档 ID、URL、已确认的版本、内容摘要、同步时间和协作者邮箱。后续同步复用文档；无修改时只读校验。元数据由Rust 进程维护，普通保存不能用 renderer 的旧副本覆盖。
 - 更新时先写新块，再删除旧块；校验块列表和版本后，给配置邮箱增加编辑权限，最后才标记同步成功。写入失败可能留下部分新块，保留文档链接，重试继续使用原文档。
 - 发现远端版本变化时返回 `conflict`，仅在用户确认覆盖后更新。编辑 API 携带版本号和 UUID `client_token`；创建文档接口没有该幂等参数，创建结果未知时保留 `creationPending` 并停止重复创建，避免生成多篇文档。
@@ -65,13 +65,13 @@ renderer 的 `noteSaveQueue.ts` 串行执行本地写入，记录最新草稿与
 
 章节写入前持久化原始请求体、版本和 `client_token`；未知插入结果使用同一请求恢复，再通过响应中的 `block_id_relations` 确认归属。删除结果未知时先读取旧块是否仍存在，避免重放索引删除误伤后续章节。配置切换保留各模式及目标位置。当前追加章节限制为 1000 块，独立文档模式仍可分批写入。
 
-Markdown 预览采用 `react-markdown` + `remark-gfm`，不执行原始 HTML。链接和图片只允许 HTTP(S)，点击链接经专用桌面方法交给系统浏览器。主窗口拒绝远程导航及新窗口；capability 不授予远程网页权限。Markdown 图片在飞书载荷中转为链接，本地附件不上传，原文与附件保持原样。
+Markdown 预览采用 `react-markdown` + `remark-gfm`，不执行原始 HTML。链接和图片只允许 HTTP(S)，点击链接经专用桌面方法交给系统浏览器。主窗口拒绝远程导航及新窗口；capability 不授予远程网页权限。Markdown 网络图片在飞书载荷中转为链接，本地附件通过受管素材上传，原文与附件保持原样。
 
 接口来源、配置步骤和验收边界见 [飞书与 Markdown 使用及验收](../handover/feishu-markdown.md)。
 
 ## 5. AI 润色
 
-`ai.rs` 通过独立的 `ai-config` 系统凭据条目保存 API 地址、模型和 Key，与飞书凭据隔离。公开配置只包含地址、模型、配置时间和 `apiKeyConfigured`。保存时 Key 留空只能复用同一地址的原 Key；更换地址必须重新输入，避免向其他服务发送旧 Key。清除配置将该条目内容置为 null。
+`ai.rs` 通过独立的 `ai-config` 系统凭据条目保存 API 地址、模型和 Key，与飞书凭据隔离。公开配置只包含地址、模型、配置时间和 `apiKeyConfigured`，保存至 `ai-config.public.json` 供窗口初始化读取；密钥仅在用户主动使用时读取并在 Rust 进程内缓存。公开文件缺失时，旧配置在首次使用或主窗口进入对应配置时迁移，不在启动时解锁。保存时 Key 留空只能复用同一地址的原 Key；更换地址必须重新输入，避免向其他服务发送旧 Key。清除配置将该条目内容置为 null，并更新公开文件和缓存。权限、迁移及固定签名的边界见 [钥匙串授权与凭据读取](../handover/keychain-access.md)。
 
 可信本地窗口只可调用 `get_ai_config`、`save_ai_config`、`clear_ai_config`、`polish_note` 和 `ai_note`。润色与翻译、扩写、解读都只接收便签 ID；Rust 从存储读取已保存文本，根据受控的操作枚举选择固定提示词，再请求配置地址下的 `/chat/completions`。前端不能传入任意路径、请求头、操作提示词或凭据。允许 HTTPS，以及回环地址的 HTTP 本地服务；地址不能包含用户名、密码、查询或片段。禁止重定向，连接超时 15 秒、总请求超时 90 秒，不自动重试付费请求。输入限制为 64 KiB UTF-8，响应体最多 1 MiB，结果文字最多 128 KiB。附件和远端文档不参与请求。
 

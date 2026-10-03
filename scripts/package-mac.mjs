@@ -16,6 +16,7 @@ const app = join(bundle, "macos", `${productName}.app`);
 // A linker's ad-hoc signature covers only the binary. Seal the complete bundle
 // for local installs, while preserving a configured release signing identity.
 if (!config.bundle?.macOS?.signingIdentity && !process.env.APPLE_SIGNING_IDENTITY) {
+  console.warn("未配置代码签名证书：本次使用 ad-hoc 签名，更新后首次使用已保存凭据时可能需要重新授权。固定签名请设置 APPLE_SIGNING_IDENTITY；详见 wiki/handover/keychain-access.md。");
   execFileSync("codesign", ["--force", "--sign", "-", app], { stdio: "inherit" });
 }
 execFileSync("codesign", ["--verify", "--deep", "--strict", app], { stdio: "inherit" });

@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 use std::{
     collections::HashSet,
     fs,
-    io::{BufWriter, Write},
+    io::{BufWriter, Read, Write},
     path::{Path, PathBuf},
 };
 use uuid::Uuid;
@@ -77,7 +77,7 @@ fn builtin_notes() -> Vec<Value> {
         }),
         json!({
             "id": "builtin-how-to-use",
-            "content": "# 贴贴便签｜使用方法\n\n## 1. 快速记录\n\n1. 在任意应用中按 `Command/Ctrl + Shift + Space` 唤起贴贴便签。\n2. 直接在正文区域输入内容，停止输入后会自动保存。\n3. 再次按快捷键可以隐藏窗口；关闭窗口也只会隐藏，不会退出应用。\n\n## 2. 编辑和整理\n\n- 第一行会作为便签标题显示，正文支持 Markdown。\n- 点击顶部的预览按钮查看排版，再切回编辑继续修改。\n- 点击加号新建便签，点击便签列表或页码在记录之间切换。\n- 使用主题和透明度设置，让便签适合你的桌面。\n\n## 3. 添加附件\n\n点击底部的附件按钮，从系统文件选择器添加图片或文件。附件会先复制到贴贴便签的应用数据目录，图片可以直接预览，其他文件可以交给系统打开。\n\n## 4. 同步到飞书\n\n1. 打开“设置 → 飞书”，填写 App ID、App Secret 和协作者邮箱。\n2. 选择“每条笔记创建新文档”，或粘贴目标文档链接并选择追加模式。\n3. 回到要同步的便签，点击底部的飞书按钮并确认结果。\n\n同步是手动触发的；图片会以链接保留，文件附件仍保存在本地。没有配置飞书时，记录仍可正常本地使用。\n\n## 5. 常用快捷键\n\n- `Command/Ctrl + Shift + Space`：唤起 / 隐藏便签\n- `Command/Ctrl + Shift + N`：新建便签\n- `Command/Ctrl + Alt + Left/Right`：上一条 / 下一条便签\n\n快捷键可以在“更多 → 设置 → 全局快捷键”中修改。\n\n## 联系方式\n\n使用中遇到问题或想提出建议，请联系：**imyuanwen@gmail.com**。",
+            "content": "# 贴贴便签｜使用方法\n\n## 1. 快速记录\n\n1. 在任意应用中按 `Command/Ctrl + Shift + Space` 唤起贴贴便签。\n2. 直接在正文区域输入内容，停止输入后会自动保存。\n3. 再次按快捷键可以隐藏窗口；关闭窗口也只会隐藏，不会退出应用。\n\n## 2. 编辑和整理\n\n- 第一行会作为便签标题显示，正文支持 Markdown。\n- 点击顶部的预览按钮查看排版，再切回编辑继续修改。\n- 点击加号新建便签，点击便签列表或页码在记录之间切换。\n- 使用主题和透明度设置，让便签适合你的桌面。\n\n## 3. 添加附件\n\n点击底部的附件按钮，从系统文件选择器添加图片或文件。附件会先复制到贴贴便签的应用数据目录，图片可以直接预览，其他文件可以交给系统打开。\n\n## 4. 同步到飞书\n\n1. 打开“设置 → 飞书”，填写 App ID、App Secret 和协作者邮箱。\n2. 选择“每条笔记创建新文档”，或粘贴目标文档链接并选择追加模式。\n3. 回到要同步的便签，点击底部的飞书按钮并确认结果。\n\n同步是手动触发的；本地图片会作为图片块上传，其他文件会作为附件块上传，Markdown 中的网络图片保留为链接。没有配置飞书时，记录仍可正常本地使用。\n\n## 5. 常用快捷键\n\n- `Command/Ctrl + Shift + Space`：唤起 / 隐藏便签\n- `Command/Ctrl + Shift + N`：新建便签\n- `Command/Ctrl + Alt + Left/Right`：上一条 / 下一条便签\n\n快捷键可以在“更多 → 设置 → 全局快捷键”中修改。\n\n## 联系方式\n\n使用中遇到问题或想提出建议，请联系：**imyuanwen@gmail.com**。",
             "attachments": [],
             "createdAt": now,
             "updatedAt": now,
@@ -339,6 +339,71 @@ impl Store {
         Ok(attachment)
     }
 
+    pub fn attachment_preview(&self, note_id: &str, attachment_id: &str) -> Result<String, String> {
+        let attachment = self
+            .notes
+            .iter()
+            .find(|note| note["id"] == note_id)
+            .and_then(|note| note["attachments"].as_array())
+            .and_then(|items| items.iter().find(|item| item["id"] == attachment_id))
+            .ok_or("INVALID_ATTACHMENT_PATH")?;
+        let path = managed_path(
+            &self.root.join("attachments"),
+            attachment["storedPath"]
+                .as_str()
+                .ok_or("INVALID_ATTACHMENT_PATH")?,
+        )?;
+        let file = fs::File::open(path).map_err(|_| "ATTACHMENT_PREVIEW_FAILED")?;
+        let mut bytes = Vec::new();
+        file.take((MAX_ATTACHMENT_BYTES + 1) as u64)
+            .read_to_end(&mut bytes)
+            .map_err(|_| "ATTACHMENT_PREVIEW_FAILED")?;
+        if bytes.len() > MAX_ATTACHMENT_BYTES {
+            return Err("ATTACHMENT_TOO_LARGE".into());
+        }
+        let (mime, _) = image_type(&bytes).ok_or("UNSUPPORTED_CLIPBOARD_IMAGE")?;
+        Ok(format!("data:{mime};base64,{}", STANDARD.encode(bytes)))
+    }
+
+    pub fn read_attachment_for_sync(
+        &self,
+        note_id: &str,
+        attachment_id: &str,
+    ) -> Result<(String, String, Vec<u8>), String> {
+        let attachment = self
+            .notes
+            .iter()
+            .find(|note| note["id"] == note_id)
+            .and_then(|note| note["attachments"].as_array())
+            .and_then(|items| items.iter().find(|item| item["id"] == attachment_id))
+            .ok_or("INVALID_ATTACHMENT_PATH")?;
+        let path = managed_path(
+            &self.root.join("attachments"),
+            attachment["storedPath"]
+                .as_str()
+                .ok_or("INVALID_ATTACHMENT_PATH")?,
+        )?;
+        let file = fs::File::open(path).map_err(|_| "ATTACHMENT_READ_FAILED")?;
+        let mut bytes = Vec::new();
+        file.take((MAX_ATTACHMENT_BYTES + 1) as u64)
+            .read_to_end(&mut bytes)
+            .map_err(|_| "ATTACHMENT_READ_FAILED")?;
+        if bytes.len() > MAX_ATTACHMENT_BYTES {
+            return Err("ATTACHMENT_TOO_LARGE".into());
+        }
+        let name = attachment["name"]
+            .as_str()
+            .filter(|value| !value.is_empty() && !value.contains(['/', '\\']))
+            .ok_or("INVALID_ATTACHMENT_NAME")?
+            .to_owned();
+        let mime = attachment["mimeType"]
+            .as_str()
+            .filter(|value| !value.is_empty() && value.len() <= 128)
+            .ok_or("INVALID_ATTACHMENT_TYPE")?
+            .to_owned();
+        Ok((name, mime, bytes))
+    }
+
     pub fn import_file(root: &Path, source: &Path) -> Result<Value, String> {
         if !source.is_file() {
             return Err("INVALID_ATTACHMENT_PATH".into());
@@ -510,6 +575,66 @@ mod tests {
         assert!(file.get("previewDataUrl").is_none());
         let empty = Store::import_bytes(&store.root, "empty.txt", "", false).unwrap();
         assert_eq!(empty["size"], 0);
+    }
+
+    #[test]
+    fn sync_reads_only_the_saved_attachment_from_the_managed_directory() {
+        let root = tempfile::tempdir().unwrap();
+        let mut store = Store::load(root.path().into(), None).unwrap();
+        let attachment = Store::import_bytes(
+            &store.root,
+            "notes.txt",
+            &STANDARD.encode(b"sync me"),
+            false,
+        )
+        .unwrap();
+        let mut saved = note();
+        saved["attachments"] = json!([attachment.clone()]);
+        store.save(saved).unwrap();
+        let (name, mime, bytes) = store
+            .read_attachment_for_sync("one", attachment["id"].as_str().unwrap())
+            .unwrap();
+        assert_eq!(name, "notes.txt");
+        assert_eq!(mime, "application/octet-stream");
+        assert_eq!(bytes, b"sync me");
+        assert!(store.read_attachment_for_sync("one", "other").is_err());
+    }
+
+    #[test]
+    fn image_preview_is_bound_to_saved_note_and_attachment_and_checks_actual_bytes() {
+        let root = tempfile::tempdir().unwrap();
+        let mut store = Store::load(root.path().into(), None).unwrap();
+        let mut bytes = b"\x89PNG\r\n\x1a\n".to_vec();
+        bytes.resize(3 * 1024 * 1024 + 1, 0);
+        let image =
+            Store::import_bytes(&store.root, "large.png", &STANDARD.encode(&bytes), true).unwrap();
+        assert!(image.get("previewDataUrl").is_none());
+        let mut saved = note();
+        saved["attachments"] = json!([image.clone()]);
+        store.save(saved).unwrap();
+        let id = image["id"].as_str().unwrap();
+        let url = store.attachment_preview("one", id).unwrap();
+        assert_eq!(
+            STANDARD
+                .decode(url.strip_prefix("data:image/png;base64,").unwrap())
+                .unwrap(),
+            bytes
+        );
+        assert!(store.attachment_preview("other", id).is_err());
+        assert!(store.attachment_preview("one", "other").is_err());
+        let path = image["storedPath"].as_str().unwrap();
+        fs::write(path, b"<svg onload='bad'>").unwrap();
+        assert!(store.attachment_preview("one", id).is_err());
+        fs::File::create(path)
+            .unwrap()
+            .set_len((MAX_ATTACHMENT_BYTES + 1) as u64)
+            .unwrap();
+        assert_eq!(
+            store.attachment_preview("one", id).unwrap_err(),
+            "ATTACHMENT_TOO_LARGE"
+        );
+        store.delete("one").unwrap();
+        assert!(store.attachment_preview("one", id).is_err());
     }
 
     #[test]

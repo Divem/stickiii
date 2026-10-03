@@ -12,6 +12,7 @@ fn main() {
             "close_note_window",
             "pick_files",
             "import_attachment",
+            "attachment_preview",
             "open_attachment",
             "open_external_link",
             "list_sync_configs",

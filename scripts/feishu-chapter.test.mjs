@@ -6,7 +6,7 @@ import { SyncConfigStore } from './fixtures/legacy-config-store.ts';
 
 const targetUrl = 'https://team.feishu.cn/docx/DocA?from=share';
 const credentials = { appId:'cli_test', appSecret:'fixture-secret', syncMode:'append', targetDocumentUrl:targetUrl, updatedAt:'' };
-const note = (id, content) => ({ id, content, attachments:[], createdAt:'',updatedAt:'',syncState:'local' });
+const note = (id, content, attachments = []) => ({ id, content, attachments, createdAt:'',updatedAt:'',syncState:'local' });
 const ok = data => new Response(JSON.stringify({code:0,data}));
 function harness() {
   const documents=new Map();
@@ -23,6 +23,7 @@ function harness() {
     if(path.includes('/wiki/v2/'))return ok({node:{obj_type:state.wikiType,obj_token:state.wikiDocument}});
     if(path.endsWith('/blocks/convert'))return ok({first_level_block_ids:['body'],blocks:[{block_id:'body',block_type:2,text:{elements:[{text_run:{content:body.content.trim()}}]}}]});
     if(path.includes('/permissions/'))return ok({});
+    if(path==='/drive/v1/medias/upload_all')return ok({file_token:`token_${body.attachment_id}`});
     if(path==='/docx/v1/documents'&&init.method==='POST'){
       const id=`Created${++state.created}`;const d={id,title:body.title,revision:1,roots:[],blocks:new Map()};documents.set(id,d);
       return ok({document:{document_id:id,revision_id:1,title:body.title}});
@@ -41,7 +42,13 @@ function harness() {
     if(receipts.has(token))return ok(structuredClone(receipts.get(token)));
     assert.equal(Number(u.searchParams.get('document_revision_id')),d.revision);
     let result;
-    if(path.endsWith('/descendant')){
+    if(path.endsWith('/children')){
+      const type=body.children[0].block_type;const inner=`Media${++state.counter}`;const wrapper=type===23?`View${state.counter}`:inner;
+      if(type===23){d.blocks.set(inner,{block_id:inner,block_type:23,file:{}});d.blocks.set(wrapper,{block_id:wrapper,block_type:33,children:[inner]});}
+      else d.blocks.set(inner,{block_id:inner,block_type:27,image:{}});
+      const position=body.index===-1?d.roots.length:body.index;d.roots.splice(position,0,wrapper);d.revision++;
+      result={document_revision_id:d.revision,children:[type===23?{block_id:wrapper,block_type:33,children:[{block_id:inner,block_type:23,file:{}}]}:{block_id:inner,block_type:type,image:{}}]};
+    }else if(path.endsWith('/descendant')){
       const relations=new Map(body.descendants.map(b=>[b.block_id,`Real${++state.counter}`]));
       for(const b of body.descendants)d.blocks.set(relations.get(b.block_id),{...structuredClone(b),block_id:relations.get(b.block_id),parent_id:id,children:(b.children??[]).map(child=>relations.get(child))});
       d.roots.splice(body.index===-1?d.roots.length:body.index,0,...body.children_id.map(child=>relations.get(child)));
@@ -51,7 +58,9 @@ function harness() {
       const remove=id=>{for(const child of d.blocks.get(id)?.children??[])remove(child);d.blocks.delete(id);};deleted.forEach(remove);
       result={document_revision_id:++d.revision};
     }else if(init.method==='PATCH'){
-      d.title=body.update_text_elements.elements[0].text_run.content;result={document_revision_id:++d.revision};
+      if(body.update_text_elements)d.title=body.update_text_elements.elements[0].text_run.content;
+      else { const block=d.blocks.get(path.split('/').pop()); if(body.replace_image)block.image={token:body.replace_image.token}; if(body.replace_file)block.file={token:body.replace_file.token}; }
+      result={document_revision_id:++d.revision};
     }else assert.fail(`Unexpected write ${path}`);
     receipts.set(token,structuredClone(result));
     await state.afterWrite?.(request);
@@ -67,7 +76,7 @@ function harness() {
   return {state,sync,doc:documents.get('DocA')};
 }
 
-function rootText(d){return d.roots.map(id=>{const b=d.blocks.get(id);return (b.heading1??b.text).elements.map(e=>e.text_run.content).join('');});}
+function rootText(d){return d.roots.flatMap(id=>{const b=d.blocks.get(id);const elements=(b?.heading1??b?.text)?.elements;return elements?[elements.map(e=>e.text_run.content).join('')]:[];});}
 
 test('new notes append independent chapters and preserve the target title and original blocks',async()=>{
   const h=harness();
@@ -76,6 +85,22 @@ test('new notes append independent chapters and preserve the target title and or
   assert.deepEqual(rootText(h.doc),['原有内容不得更改','第一条','第一条正文','第二条','第二条正文']);
   assert.equal(h.doc.title,'原有文档标题');assert.equal(h.state.created,0);
   assert.equal(h.state.calls.some(c=>c.path.includes('/permissions/')),false);
+});
+
+test('append mode uploads image and file attachments as owned media blocks',async()=>{
+  const h=harness();
+  const attachments=[
+    {id:'image-1',name:'截图.png',mimeType:'image/png',size:12,storedPath:'/managed/image.png'},
+    {id:'file-1',name:'说明.pdf',mimeType:'application/pdf',size:18,storedPath:'/managed/readme.pdf'},
+  ];
+  const result=await h.sync(note('media','标题\n正文',attachments));
+  assert.equal(result.status,'synced');
+  const link=h.state.notes.get('media').feishu;
+  assert.equal(link.chapter.blockIds.length,4);
+  assert.equal(h.state.calls.filter(c=>c.path==='/drive/v1/medias/upload_all').length,2);
+  assert.deepEqual(rootText(h.doc),['原有内容不得更改','标题','正文']);
+  assert.equal((await h.sync(note('media','标题\n正文',attachments))).status,'synced');
+  assert.equal(h.state.calls.filter(c=>c.path==='/drive/v1/medias/upload_all').length,2);
 });
 
 test('updating one chapter preserves its position and every other chapter',async()=>{

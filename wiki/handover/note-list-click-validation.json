@@ -1,0 +1,99 @@
+{
+  "verifiedAt": "2026-10-03T15:25:50.198968+00:00",
+  "platform": "macOS arm64",
+  "checks": {
+    "typecheck": "passed",
+    "contractTests": {
+      "passed": 78,
+      "failed": 0
+    },
+    "nativeCheck": "passed",
+    "nativeTests": {
+      "passed": 30,
+      "failed": 0
+    },
+    "windowSmoke": "passed",
+    "macPackage": "passed",
+    "bundleSignature": "ad-hoc verified",
+    "dmgChecksum": "passed"
+  },
+  "windowSmoke": {
+    "passed": true,
+    "platform": "darwin",
+    "first": {
+      "passed": true,
+      "phase": 1,
+      "result": {
+        "firstClickOpensNotes": true,
+        "nonFocusablePanelKeepsList": true,
+        "listTriggerClosesOnce": true,
+        "listTriggerOpensOnce": true,
+        "menuSwitchesOnce": true,
+        "escapeClosesList": true,
+        "outsideClickClosesList": true,
+        "focusOutsideClosesList": true,
+        "windowBlurClosesList": true,
+        "historyRowsAfterSearchBlur": true,
+        "mainAttachmentImport": true,
+        "mainWriteBlocked": true,
+        "mainImportBlocked": true,
+        "mainPreview": true,
+        "reused": true,
+        "listEntryLayout": true,
+        "independentAfterSearchBlur": true,
+        "multiple": true,
+        "childAndMainUpdates": true,
+        "deleteFlush": true,
+        "deletedWindow": true,
+        "returnToMain": true,
+        "otherWindowsUnaffected": true,
+        "multiWindowExitCancelled": true,
+        "latestChildDraftSaved": true
+      }
+    },
+    "layouts": {
+      "qa-window-b": {
+        "x": 60,
+        "y": 1000,
+        "width": 440,
+        "height": 390,
+        "pinned": false,
+        "open": false
+      },
+      "qa-window-c": {
+        "x": 60,
+        "y": 1000,
+        "width": 440,
+        "height": 390,
+        "pinned": false,
+        "open": false
+      },
+      "qa-window-a": {
+        "x": 60,
+        "y": 1000,
+        "width": 440,
+        "height": 390,
+        "pinned": true,
+        "open": true
+      }
+    },
+    "second": {
+      "passed": true,
+      "phase": 2,
+      "result": {
+        "restored": true,
+        "savedLatestOnExit": true,
+        "mainRemainsReadOnly": true,
+        "restoredDelete": true
+      }
+    }
+  },
+  "installation": {
+    "status": "installed and restarted",
+    "installedAt": "2026-10-03T16:00:01.694420+00:00",
+    "appPath": "/Applications/贴贴便签.app",
+    "bundleSignature": "verified",
+    "installedBinaryMatchesVerifiedSnapshot": true,
+    "installedListRemainsAfterSearchBlur": true
+  }
+}

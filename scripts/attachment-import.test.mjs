@@ -4,6 +4,7 @@ import { mockIPC, clearMocks } from "@tauri-apps/api/mocks";
 import { appendAttachments, clipboardImages, importAttachmentBatch, MAX_ATTACHMENT_BYTES } from "../src/renderer/attachmentImport.ts";
 import { NoteSaveQueue } from "../src/renderer/noteSaveQueue.ts";
 import { desktopTabs } from "../src/renderer/desktop.ts";
+import { contentWithAttachmentImages } from "../src/shared/markdown.ts";
 
 globalThis.window = Object.assign(new EventTarget(), { crypto: globalThis.crypto });
 afterEach(() => clearMocks());
@@ -35,7 +36,7 @@ test("imports append to the latest original note after typing and switching, pre
   assert.equal(selectedNote, "B");
   assert.equal(queue.read("B").attachments.length, 0);
   assert.equal(writes[0].id, "A");
-  assert.equal(writes[0].content, "New typing");
+  assert.equal(writes[0].content, "New typing\n\n![screenshot.png](attachment:image)\n\n");
   assert.equal(writes[0].theme, "sage");
   assert.deepEqual(writes[0].feishu, { documentId: "remote" });
   assert.deepEqual(writes[0].attachments, [attachment]);
@@ -46,6 +47,32 @@ test("late attachment results cannot recreate a deleted note", async () => {
   queue.seed([note("A")]);
   await queue.remove("A", async () => {});
   assert.equal(appendAttachments(queue.read("A"), [attachment]), undefined);
+});
+
+test("pasted images insert at the selection, while text edits during import are retained", () => {
+  const original = { ...note("A"), content: "Before selected After" };
+  const insertion = { content: original.content, start: 7, end: 15 };
+  const result = appendAttachments(original, [attachment], insertion);
+  assert.equal(result.content, "Before \n\n![screenshot.png](attachment:image)\n\n After");
+  const typing = appendAttachments({ ...original, content: "Before new typing After" }, [attachment], insertion);
+  assert.ok(typing.content.endsWith("new typing After"));
+  const changedPrefix = appendAttachments({ ...original, content: "Rewritten before import finished" }, [attachment], insertion);
+  assert.ok(changedPrefix.content.startsWith("Rewritten before import finished\n\n!"));
+  assert.equal(appendAttachments(original, [{ ...attachment, mimeType: "text/plain" }], insertion).content, original.content);
+  const legacy = { ...note("A"), content: "Selected remains", attachments: [attachment] };
+  const legacyInsertion = { content: contentWithAttachmentImages(legacy.content, legacy.attachments), start: 0, end: 8 };
+  const second = { ...attachment, id: "second" };
+  const updated = appendAttachments(legacy, [second], legacyInsertion);
+  assert.equal(updated.content.includes("Selected"), false);
+  assert.ok(updated.content.includes("attachment:image"));
+  assert.ok(updated.content.includes("attachment:second"));
+});
+
+test("image preview bridge sends only a note and attachment identity", async () => {
+  const calls = [];
+  mockIPC((command, payload) => { calls.push({ command, payload }); return "data:image/png;base64,YWJj"; });
+  assert.equal(await desktopTabs.attachmentPreview("A", "image"), "data:image/png;base64,YWJj");
+  assert.deepEqual(calls, [{ command: "attachment_preview", payload: { noteId: "A", attachmentId: "image" } }]);
 });
 
 test("a failed or oversized file preserves successful imports and files are processed sequentially", async () => {

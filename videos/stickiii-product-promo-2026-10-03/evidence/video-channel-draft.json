@@ -1,0 +1,25 @@
+{
+  "platform": "WeChat Channels",
+  "account": "imyuanwen",
+  "status": "saved-to-drafts",
+  "published": false,
+  "title": "贴贴便签：灵感先贴下来",
+  "description": "灵感来了，先贴下来。\n\nStickiii · 贴贴便签，一款本地优先的桌面随手记。快捷键唤起、Markdown 编辑与预览、多便签独立窗口，把临时想法先留在本机，需要时再整理到飞书。\n\n当前为 0.1.0 预发布。AI 与飞书功能需配置后使用，Windows 运行待验收。\n\n#贴贴便签 #桌面便签 #效率工具 #开源软件",
+  "video": "renders/stickiii-product-promo-1080p.mp4",
+  "videoSha256": "5f0a5c4ef2cc45a8e2203c8ee1b8d9f24f95ef2c0959f1d6bc09d57808e019d4",
+  "duration": 50,
+  "covers": {
+    "profile": "covers/cover-3x4.png",
+    "share": "covers/cover-4x3.png"
+  },
+  "draftsUrl": "https://channels.weixin.qq.com/platform/post/draftListManager",
+  "visibleSavedTime": "2026年10月03日 22:35",
+  "verification": [
+    "Save action produced 已保存 toast",
+    "Navigated through content management to 草稿箱",
+    "Matching Stickiii draft visible as first item in 草稿箱 (7)",
+    "Both cover crop previews inspected and confirmed"
+  ],
+  "evidence": "video-channel-draft-saved.png",
+  "browser": "ego-browser TaskSpace 63"
+}

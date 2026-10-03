@@ -4,14 +4,17 @@ import type { Note, NoteAttachment } from "../shared/types.js";
 import MarkdownPreview from "./MarkdownPreview.js";
 import { t, type Locale } from "./i18n.js";
 import { clipboardImages } from "./attachmentImport.js";
+import type { ImageInsertion } from "./attachmentImport.js";
+import InlineNoteContent, { type NoteEditorHandle } from "./InlineNoteContent.js";
+import { contentWithAttachmentImages } from "../shared/markdown.js";
 
 export default function NoteEditor({ note, preview, readOnly, importing, importDisabled, locale, editorRef, previewRef, onChange, onOpenLink, onOpenAttachment, onRemoveAttachment, onImportFiles, onImportRejected }: {
   note: Note; preview: boolean; readOnly: boolean; locale: Locale;
   importing: boolean; importDisabled: boolean;
-  editorRef: RefObject<HTMLTextAreaElement | null>; previewRef: RefObject<HTMLDivElement | null>;
+  editorRef: RefObject<NoteEditorHandle | null>; previewRef: RefObject<HTMLDivElement | null>;
   onChange: (content: string) => void; onOpenLink: (url: string) => void;
   onOpenAttachment: (attachment: NoteAttachment) => void; onRemoveAttachment: (id: string) => void;
-  onImportFiles: (files: File[], imageOnly: boolean) => void; onImportRejected: (directory: boolean) => void;
+  onImportFiles: (files: File[], imageOnly: boolean, insertion?: ImageInsertion) => void; onImportRejected: (directory: boolean) => void;
 }) {
   const [dragging, setDragging] = useState(false);
   const dragDepth = useRef(0);
@@ -28,11 +31,17 @@ export default function NoteEditor({ note, preview, readOnly, importing, importD
     };
   }, []);
   const available = !readOnly && !importing && !importDisabled;
+  const imageInsertion = (): ImageInsertion | undefined => preview ? undefined : {
+    content: contentWithAttachmentImages(note.content, note.attachments),
+    start: editorRef.current?.selectionStart ?? note.content.length,
+    end: editorRef.current?.selectionEnd ?? note.content.length,
+  };
+  const files = note.attachments.filter((attachment) => !attachment.mimeType.startsWith("image/"));
   return <div className={`attachment-drop-zone${dragging ? " dragging" : ""}`} onPaste={(event) => {
     const images = clipboardImages(event.clipboardData);
     if (!images.length) return;
     event.preventDefault();
-    if (available) onImportFiles(images, true);
+    if (available) onImportFiles(images, true, imageInsertion());
     else onImportRejected(false);
   }} onDragEnter={(event) => {
     if (!event.dataTransfer.types.includes("Files")) return;
@@ -56,13 +65,13 @@ export default function NoteEditor({ note, preview, readOnly, importing, importD
       onImportRejected(true); return;
     }
     const files = Array.from(event.dataTransfer.files);
-    if (files.length) onImportFiles(files, false);
+    if (files.length) onImportFiles(files, false, imageInsertion());
   }}>
-    <textarea key={note.id} ref={editorRef} className="note-content" hidden={preview} readOnly={readOnly}
-      value={note.content} onChange={(event) => onChange(event.target.value)} aria-label={t("noteContent", locale)}
-      title={t("markdownHint", locale)} placeholder={t("notePlaceholder", locale)} />
-    {preview && <MarkdownPreview previewRef={previewRef} content={note.content} locale={locale} onOpenLink={onOpenLink} />}
-    {note.attachments.length > 0 && <div className="attachment-strip">{note.attachments.map((attachment) => (
+    <InlineNoteContent key={note.id} note={note} hidden={preview} readOnly={readOnly} importing={importing} locale={locale}
+      editorRef={editorRef} onChange={onChange} onOpenAttachment={onOpenAttachment} onRemoveAttachment={onRemoveAttachment} />
+    {preview && <MarkdownPreview previewRef={previewRef} noteId={note.id} attachments={note.attachments} imageReady={!importing}
+      content={note.content} locale={locale} onOpenLink={onOpenLink} onOpenAttachment={onOpenAttachment} />}
+    {files.length > 0 && <div className="attachment-strip">{files.map((attachment) => (
       <div className="attachment-card" key={attachment.id}>
         <button className="attachment-open-button" onClick={() => onOpenAttachment(attachment)} title={attachment.name}>
           {attachment.previewDataUrl ? <img src={attachment.previewDataUrl} alt={attachment.name} loading="lazy" />

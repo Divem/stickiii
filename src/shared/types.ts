@@ -51,6 +51,8 @@ export type FeishuChapterPending = {
   oldBlockIds: string[];
   oldFingerprint?: string;
   insertedBlockIds?: string[];
+  mediaAttachments?: Array<Pick<NoteAttachment, "id" | "name" | "mimeType" | "size">>;
+  mediaBlockIds?: string[];
   body: { index: number; children_id: string[]; descendants: Record<string, unknown>[] };
 };
 
@@ -69,7 +71,7 @@ export type FeishuDocument = {
 };
 
 export type SyncOptions = { overwriteRemote?: boolean };
-export type SyncWarning = "local-attachments" | "image-links";
+export type SyncWarning = "image-links";
 
 export type NoteAttachment = {
   id: string;

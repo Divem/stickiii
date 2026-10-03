@@ -1,7 +1,10 @@
 use crate::credentials::{system_vault, Vault};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::time::{Duration, Instant};
+use std::{
+    path::{Path, PathBuf},
+    time::{Duration, Instant},
+};
 
 const MAX_CONTENT: usize = 64 * 1024;
 const MAX_RESPONSE: usize = 1024 * 1024;
@@ -53,6 +56,15 @@ pub struct Config {
     updated_at: String,
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PublicConfig {
+    base_url: String,
+    model: String,
+    api_key_configured: bool,
+    updated_at: String,
+}
+
 // The renderer can configure one endpoint, but cannot supply arbitrary paths,
 // headers, prompts or credentials when requesting a note polish.
 fn normalize_base(value: &str) -> Option<String> {
@@ -83,7 +95,12 @@ fn valid_key(key: &str) -> bool {
 
 impl Config {
     fn public(&self) -> Value {
-        json!({"baseUrl":self.base_url,"model":self.model,"apiKeyConfigured":true,"updatedAt":self.updated_at})
+        json!(PublicConfig {
+            base_url: self.base_url.clone(),
+            model: self.model.clone(),
+            api_key_configured: true,
+            updated_at: self.updated_at.clone(),
+        })
     }
 }
 
@@ -116,17 +133,25 @@ fn resolve_input(input: &ConfigInput, previous: Option<&Config>) -> Result<Confi
 
 pub struct ConfigStore {
     vault: Box<dyn Vault>,
+    public_path: PathBuf,
 }
 
 impl ConfigStore {
-    pub fn system() -> Self {
+    pub fn system(root: &Path) -> Self {
         Self {
             vault: system_vault("ai-config"),
+            public_path: root.join("ai-config.public.json"),
         }
+    }
+
+    fn persist_public(&self, config: Option<&Config>) -> Result<(), String> {
+        crate::storage::atomic_json(&self.public_path, &config.map(Config::public))
+            .map_err(|_| "AI_CONFIG_UNAVAILABLE".into())
     }
 
     pub fn credentials(&self) -> Result<Option<Config>, String> {
         let Some(value) = self.vault.read().map_err(|_| "AI_CONFIG_UNAVAILABLE")? else {
+            self.persist_public(None)?;
             return Ok(None);
         };
         let config: Option<Config> =
@@ -139,11 +164,18 @@ impl ConfigStore {
                 return Err("AI_CONFIG_UNAVAILABLE".into());
             }
         }
+        self.persist_public(config.as_ref())?;
         Ok(config)
     }
 
-    pub fn get(&self) -> Result<Option<Value>, String> {
-        Ok(self.credentials()?.map(|config| config.public()))
+    pub fn get(&self, load_saved: bool) -> Result<Option<Value>, String> {
+        match crate::storage::read_json::<Option<PublicConfig>>(&self.public_path)
+            .map_err(|_| "AI_CONFIG_UNAVAILABLE")?
+        {
+            Some(config) => Ok(config.map(|config| json!(config))),
+            None if load_saved => Ok(self.credentials()?.map(|config| config.public())),
+            None => Ok(None),
+        }
     }
 
     pub fn save(&self, input: ConfigInput) -> Value {
@@ -152,6 +184,8 @@ impl ConfigStore {
             let config = resolve_input(&input, previous.as_ref())?;
             let value = serde_json::to_string(&config).map_err(|_| "unavailable")?;
             self.vault.write(&value).map_err(|_| "unavailable")?;
+            self.persist_public(Some(&config))
+                .map_err(|_| "unavailable")?;
             Ok(config)
         };
         match operation() {
@@ -172,7 +206,11 @@ impl ConfigStore {
 
     pub fn clear(&self) -> Value {
         // A null value removes all configuration and key material from this entry.
-        match self.vault.write("null") {
+        match self
+            .vault
+            .write("null")
+            .and_then(|_| self.persist_public(None))
+        {
             Ok(()) => json!({"status":"cleared"}),
             Err(_) => json!({"status":"unavailable"}),
         }
@@ -327,18 +365,77 @@ mod tests {
         }
     }
 
+    struct DeniedVault;
+    impl Vault for DeniedVault {
+        fn read(&self) -> Result<Option<String>, String> {
+            Err("denied".into())
+        }
+        fn write(&self, _: &str) -> Result<(), String> {
+            Err("denied".into())
+        }
+    }
+
+    #[test]
+    fn startup_and_saved_public_settings_do_not_require_vault_access() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("public.json");
+        let locked = ConfigStore {
+            public_path: path.clone(),
+            vault: Box::new(DeniedVault),
+        };
+        assert!(locked.get(false).unwrap().is_none());
+        assert!(locked.get(true).is_err());
+        assert!(!path.exists());
+        let data = Arc::new(Mutex::new(Some(json!({"baseUrl":"https://api.example.com/v1","model":"legacy-model","apiKey":"private-key","updatedAt":"now"}).to_string())));
+        let store = ConfigStore {
+            public_path: path.clone(),
+            vault: Box::new(TestVault(data.clone())),
+        };
+        assert!(store.get(false).unwrap().is_none());
+        assert_eq!(store.get(true).unwrap().unwrap()["model"], "legacy-model");
+        let public = std::fs::read_to_string(&path).unwrap();
+        assert!(!public.contains("apiKey\"") && !public.contains("private-key"));
+        assert_eq!(locked.get(false).unwrap().unwrap()["model"], "legacy-model");
+        assert_eq!(locked.get(true).unwrap().unwrap()["model"], "legacy-model");
+        assert_eq!(locked.clear()["status"], "unavailable");
+        assert_eq!(locked.get(false).unwrap().unwrap()["model"], "legacy-model");
+        assert_eq!(store.credentials().unwrap().unwrap().api_key, "private-key");
+        assert_eq!(store.clear()["status"], "cleared");
+        assert!(store.credentials().unwrap().is_none());
+        assert!(locked.get(true).unwrap().is_none());
+    }
+
+    #[test]
+    fn public_metadata_cannot_return_injected_credentials_or_unlock_on_corruption() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("public.json");
+        let store = ConfigStore {
+            public_path: path.clone(),
+            vault: Box::new(DeniedVault),
+        };
+        crate::storage::atomic_json(&path, &json!({"baseUrl":"https://api.example.com/v1","model":"model","apiKeyConfigured":true,"updatedAt":"now","apiKey":"injected-secret","accessToken":"private-token"})).unwrap();
+        let public = store.get(false).unwrap().unwrap();
+        assert!(public.get("apiKey").is_none() && public.get("accessToken").is_none());
+        std::fs::write(&path, "corrupt").unwrap();
+        assert!(store.get(false).is_err());
+        assert!(store.get(true).is_err());
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "corrupt");
+    }
+
     #[test]
     fn key_is_private_and_blank_input_only_reuses_it_for_the_same_endpoint() {
         let data = Arc::new(Mutex::new(None));
+        let root = tempfile::tempdir().unwrap();
         let store = ConfigStore {
+            public_path: root.path().join("public.json"),
             vault: Box::new(TestVault(data)),
         };
-        assert!(store.get().unwrap().is_none());
+        assert!(store.get(false).unwrap().is_none());
         assert_eq!(
             store.save(input("https://api.example.com/v1/", "secret"))["status"],
             "saved"
         );
-        assert!(store.get().unwrap().unwrap().get("apiKey").is_none());
+        assert!(store.get(false).unwrap().unwrap().get("apiKey").is_none());
         assert_eq!(
             store.save(input("https://api.example.com/v1/chat/completions", ""))["status"],
             "saved"
@@ -353,13 +450,15 @@ mod tests {
             "https://api.example.com/v1"
         );
         assert_eq!(store.clear()["status"], "cleared");
-        assert!(store.get().unwrap().is_none());
+        assert!(store.get(false).unwrap().is_none());
     }
 
     #[test]
     fn connection_test_uses_unsaved_inputs_without_saving_or_reusing_a_key_on_another_host() {
         let data = Arc::new(Mutex::new(None));
+        let root = tempfile::tempdir().unwrap();
         let store = ConfigStore {
+            public_path: root.path().join("public.json"),
             vault: Box::new(TestVault(data.clone())),
         };
         assert!(store
@@ -391,7 +490,9 @@ mod tests {
     #[test]
     fn corrupt_vault_and_invalid_configuration_do_not_overwrite_credentials() {
         let data = Arc::new(Mutex::new(Some("corrupt".into())));
+        let root = tempfile::tempdir().unwrap();
         let store = ConfigStore {
+            public_path: root.path().join("public.json"),
             vault: Box::new(TestVault(data.clone())),
         };
         assert_eq!(

@@ -9,7 +9,7 @@ const ok = (data) => new Response(JSON.stringify({ code: 0, data }), { status: 2
 const failure = (code, status = 400) => new Response(JSON.stringify({ code, msg: 'fixture error' }), { status });
 
 function harness() {
-  const state = { calls: [], documentId: 'doc_test_123', revision: 1, title: '', children: [], created: 0, link: undefined, intercept: undefined };
+  const state = { calls: [], documentId: 'doc_test_123', revision: 1, title: '', children: [], created: 0, media: 0, link: undefined, intercept: undefined };
   const fetcher = async (url, options) => {
     assert.ok(url.startsWith('https://open.feishu.cn/open-apis/'));
     const parsed = new URL(url);
@@ -46,6 +46,18 @@ function harness() {
       assert.deepEqual(body, { member_type: 'email', member_id: credentials.collaboratorEmail, perm: 'edit', type: 'user' });
       return ok({ member: body });
     }
+    if (path.endsWith('/children') && options.method === 'POST') {
+      const type = body.children[0].block_type;
+      const id = `media_${++state.media}`;
+      state.children.push(id);
+      state.revision++;
+      return ok({ document_revision_id: state.revision, children: [{ block_id: id, block_type: type, [type === 27 ? 'image' : 'file']: {} }] });
+    }
+    if (path === '/drive/v1/medias/upload_all') {
+      assert.equal(body.attachment_id, 'file');
+      assert.equal(body.parent_type, 'docx_file');
+      return ok({ file_token: `token_${body.attachment_id}` });
+    }
     if (options.method === 'GET') return ok({ block: { block_id: state.documentId, block_type: 1, children: [...state.children] } });
     assert.equal(state.link.documentId, state.documentId, 'identity saved before content writes');
     assert.equal(Number(parsed.searchParams.get('document_revision_id')), state.revision);
@@ -57,7 +69,8 @@ function harness() {
       assert.equal(body.start_index, 0);
       assert.ok(body.end_index < state.children.length, 'new content is staged before deleting old content');
       state.children.splice(body.start_index, body.end_index - body.start_index);
-    } else if (options.method === 'PATCH') state.title = body.update_text_elements.elements[0].text_run.content;
+    } else if (options.method === 'PATCH' && body.update_text_elements) state.title = body.update_text_elements.elements[0].text_run.content;
+    else if (options.method === 'PATCH' && (body.replace_image || body.replace_file)) { /* media binding */ }
     else assert.fail(`Unexpected request: ${options.method} ${path}`);
     state.revision++;
     return ok({ document_revision_id: state.revision });
@@ -176,10 +189,13 @@ test('no remote document is created when local checkpoint persistence fails', as
   assert.equal(h.state.created, 0);
 });
 
-test('image links and local attachments are reported accurately', async () => {
+test('image links and local attachments are uploaded and reported accurately', async () => {
   const h = harness();
-  const result = await h.run({ ...fixtureNote, content: '# 图片\n\n![截图](https://example.com/a.png)', attachments: [{id:'file'}] });
-  assert.deepEqual(result.warnings, ['local-attachments', 'image-links']);
+  const result = await h.run({ ...fixtureNote, content: '# 图片\n\n![截图](https://example.com/a.png)', attachments: [{ id: 'file', name: 'readme.txt', mimeType: 'text/plain', size: 4, storedPath: '/managed/readme.txt' }] });
+  assert.deepEqual(result.warnings, ['image-links']);
+  assert.equal(h.state.calls.filter((call) => call.path === '/drive/v1/medias/upload_all').length, 1);
+  assert.equal(h.state.calls.some((call) => call.path.endsWith('/children')), true);
+  assert.equal(h.state.children.length, 3);
   const payload = h.state.calls.find((call) => call.path.endsWith('/blocks/convert')).body.content;
   assert.ok(payload.includes('[截图](https://example.com/a.png)'));
   assert.equal(payload.includes('!['), false);

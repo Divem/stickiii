@@ -17,6 +17,9 @@ async function run(command, args, options = {}) {
     child.on("exit", (code) => code === 0 ? resolve() : reject(new Error(`${command} exited with ${code}`)));
   });
 }
+const nativeClick = process.platform === "darwin" ? join(root, "native-click") : null;
+if (nativeClick) await run("clang", ["-fobjc-arc", "-framework", "Cocoa", "-framework", "ApplicationServices",
+  "scripts/macos-native-click.m", "-o", nativeClick]);
 await run(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "tauri", "--", "build", "--debug", "--no-bundle", "--config",
   JSON.stringify({ identifier: "com.dawinyuan.desktabs.windowsqa", productName: "贴贴便签 Window QA" })]);
 const fixtures = [..."abc"].map((key, index) => ({
@@ -34,6 +37,7 @@ async function phase(number) {
   await new Promise((resolve, reject) => {
     const child = spawn(binary, [], { cwd, stdio: "inherit", env: { ...process.env, DESK_TABS_DEV_DATA_DIR: root, DESK_TABS_DEV_WINDOW_SMOKE: String(number) } });
     let done = false;
+    let clickStarted = false;
     const finish = (error) => {
       if (done) return;
       done = true;
@@ -43,7 +47,15 @@ async function phase(number) {
     const timeout = setTimeout(() => finish(new Error(`Window phase ${number} did not finish; results: ${root}`)), 60000);
     const poll = setInterval(() => { void result(number).then((value) => {
       if (value && !value.passed) finish(new Error(JSON.stringify(value)));
-    }).catch(() => {}); }, 200);
+    }).catch(() => {});
+      if (nativeClick && !clickStarted) void readFile(join(root, "notes.json"), "utf8").then(async (data) => {
+        const request = JSON.parse(data).find((note) => note.id === "qa-window-native-click");
+        if (!request || clickStarted || done) return;
+        clickStarted = true;
+        const { x, y } = JSON.parse(request.content);
+        await run(nativeClick, [String(child.pid), String(x), String(y)]);
+      }).catch(finish);
+    }, 200);
     child.on("error", finish);
     child.on("exit", (code) => finish(code === 0 ? undefined : new Error(`Window QA exited with ${code}`)));
   });

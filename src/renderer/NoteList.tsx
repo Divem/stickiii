@@ -12,16 +12,18 @@ const NoteRow = memo(function NoteRow({ note, selected, locale, onSelect, onOpen
   const time = useMemo(() => new Date(note.updatedAt).toLocaleDateString(locale === "zh" ? "zh-CN" : "en-US", {
     month: "short", day: "numeric",
   }), [note.updatedAt, locale]);
-  return <div className="note-list-row"><button className={`popover-note ${selected ? "selected" : ""}`} aria-current={selected ? "true" : undefined}
+  // Keep search focus until click runs; WebKit can blur it before mouseup.
+  return <div className="note-list-row" onMouseDown={(event) => { if (event.button === 0) event.preventDefault(); }}><button className={`popover-note ${selected ? "selected" : ""}`} aria-current={selected ? "true" : undefined}
     title={title || t("untitled", locale)} onClick={() => onSelect(note)}>
     <span>{title || t("untitled", locale)}{independent && <span className="independent-marker" title={t("independentNote", locale)}> · ↗</span>}</span><small>{time}</small>
   </button><button className="note-list-open" aria-label={`${t(independent ? "focusNoteWindow" : "openNoteWindow", locale)} · ${title || t("untitled", locale)}`}
     title={t(independent ? "focusNoteWindow" : "openNoteWindow", locale)} onClick={() => onOpen(note.id)}><PanelTop size={13} /></button></div>;
 });
 
-export default function NoteList({ notes, activeNote, locale, onSelect, onNew, onOpen, openNoteIds }: {
+export default function NoteList({ notes, activeNote, locale, newNoteTip, onSelect, onNew, onOpen, openNoteIds }: {
   notes: Note[]; activeNote: Note | null; locale: Locale; onSelect: (note: Note) => void; onNew: () => void;
   onOpen: (id: string) => void; openNoteIds: string[];
+  newNoteTip?: string;
 }) {
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(100);
@@ -31,7 +33,7 @@ export default function NoteList({ notes, activeNote, locale, onSelect, onNew, o
   [notes, activeNote, search]);
   return <>
     <div className="popover-title notes-header"><span>{t("viewNotes", locale)}</span>
-      <button className="notes-new-button" aria-label={t("newNote", locale)} title={t("newNote", locale)} onClick={onNew}><Plus size={15} /></button>
+      <button className="notes-new-button" aria-label={t("newNote", locale)} title={newNoteTip ?? t("newNote", locale)} onClick={onNew}><Plus size={15} /></button>
     </div>
     <label className="notes-search"><Search size={13} /><input autoFocus value={query}
       aria-label={t("searchPlaceholder", locale)} placeholder={t("searchPlaceholder", locale)}

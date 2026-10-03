@@ -3,6 +3,7 @@
   if (window.__qaWindowStarted) return;
   window.__qaWindowStarted = true;
   const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const settle = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   const wait = async (fn, label = "condition") => {
     for (let i = 0; i < 200; i++) { const result = await fn(); if (result) return result; await pause(100); }
     throw new Error(`WINDOW_SMOKE_TIMEOUT: ${label}`);
@@ -17,18 +18,47 @@
     const zone = await wait(() => document.querySelector(".attachment-drop-zone"), "attachment drop zone");
     const editor = document.querySelector("textarea.note-content");
     const before = (await window.desktopTabs.listNotes()).find((note) => note.id === noteId).attachments.length;
-    const png = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII="), (char) => char.charCodeAt(0));
+    const canvas = document.createElement("canvas");
+    canvas.width = 800; canvas.height = 1600;
+    const drawing = canvas.getContext("2d");
+    drawing.fillStyle = "#80a98b"; drawing.fillRect(0, 0, canvas.width, canvas.height);
+    const png = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
     const clipboard = new DataTransfer();
     clipboard.items.add(new File([png], "image.png", { type: "image/png" }));
+    editor.setSelectionRange(editor.value.length, editor.value.length);
+    editor.dispatchEvent(new Event("select", { bubbles: true }));
     check(!editor.dispatchEvent(new ClipboardEvent("paste", { clipboardData: clipboard, bubbles: true, cancelable: true })), "IMAGE_PASTE_INTERCEPTED");
     await wait(async () => (await window.desktopTabs.listNotes()).find((note) => note.id === noteId)?.attachments.length === before + 1, "pasted image saved");
     await wait(() => !document.querySelector(".attachment-import-status"), "paste idle");
     const image = (await window.desktopTabs.listNotes()).find((note) => note.id === noteId).attachments.find((file) => file.mimeType === "image/png");
     check(image.previewDataUrl.startsWith("data:image/png;base64,") && image.name.startsWith("screenshot-"), "PASTE_PREVIEW");
+    const inline = await wait(() => document.querySelector(".inline-note-content .note-image-open img"), "inline image in edit mode");
+    await wait(() => inline.complete && inline.naturalWidth > 0, "inline image decoded");
+    const checkImageFit = (img, root, label) => {
+      const rect = img.getBoundingClientRect();
+      check(rect.width > 0 && rect.height > 0, `${label}_VISIBLE`);
+      check(Math.abs(rect.width / rect.height - img.naturalWidth / img.naturalHeight) < 0.01, `${label}_ASPECT_RATIO`);
+      check(rect.width <= root.clientWidth + 1 && rect.height <= root.clientHeight - 95, `${label}_TEXT_SPACE`);
+    };
+    checkImageFit(inline, document.querySelector(".inline-note-content"), "EDIT_IMAGE_FIT");
+    check(!document.querySelector(".attachment-strip .attachment-card img"), "IMAGE_NOT_ATTACHMENT_CARD");
+    const textEditors = document.querySelectorAll("textarea.note-content");
+    check(textEditors.length >= 2, "TEXT_BEFORE_AND_AFTER_IMAGE");
+    setContent(textEditors[0], textEditors[0].value + "图片前继续输入\n\n");
+    setContent(textEditors[textEditors.length - 1], "\n\n图片后继续输入");
+    await wait(async () => {
+      const saved = (await window.desktopTabs.listNotes()).find((note) => note.id === noteId);
+      return saved.content.includes("图片前继续输入") && saved.content.includes("图片后继续输入") && saved.content.includes(`attachment:${image.id}`);
+    }, "text on both sides persisted");
+    check((await window.desktopTabs.attachmentPreview(noteId, image.id)).startsWith("data:image/png;base64,"), "BOUND_IMAGE_PREVIEW");
+    check(await denied(() => window.desktopTabs.attachmentPreview(noteId, "foreign-attachment")), "FOREIGN_ATTACHMENT_PREVIEW_DENIED");
+    if (context.noteId) check(await denied(() => window.desktopTabs.attachmentPreview("qa-window-b", image.id)), "CHILD_PREVIEW_NOTE_SCOPE");
     const text = new DataTransfer(); text.setData("text/plain", "ordinary text");
     check(editor.dispatchEvent(new ClipboardEvent("paste", { clipboardData: text, bubbles: true, cancelable: true })), "TEXT_PASTE_UNCHANGED");
     document.querySelector(".editor-mode-switch").click();
     await wait(() => editor.hidden, "preview before drop");
+    await wait(() => document.querySelector(".markdown-preview .note-image-open img")?.naturalWidth > 0, "inline image in preview");
+    checkImageFit(document.querySelector(".markdown-preview .note-image-open img"), document.querySelector(".markdown-preview"), "PREVIEW_IMAGE_FIT");
     const dropped = new DataTransfer();
     dropped.items.add(new File(["QA attachment"], "qa-report.txt", { type: "text/plain" }));
     check(!zone.dispatchEvent(new DragEvent("dragenter", { dataTransfer: dropped, bubbles: true, cancelable: true })), "FILE_DRAG_ACCEPTED");
@@ -50,6 +80,8 @@
       check(notes.length === 1 && notes[0].id === context.noteId, "CHILD_DATA_SCOPE");
       check(await denied(() => window.desktopTabs.saveNote({ ...notes[0], id: "qa-other-note", content: "forbidden" })), "CHILD_WRITE_SCOPE");
       check(await denied(() => window.desktopTabs.listShortcuts()), "CHILD_GLOBAL_SCOPE");
+      check(await denied(() => window.desktopTabs.getAiConfig(true)), "CHILD_LEGACY_AI_CONFIG_DENIED");
+      check(await denied(() => window.desktopTabs.listSyncConfigs(true)), "CHILD_LEGACY_SYNC_CONFIG_DENIED");
       const editor = await wait(() => document.querySelector("textarea.note-content"), "child editor");
       check(!document.querySelector('button[aria-label="快速记录"]') && !document.querySelector('button[aria-label="查看便签"]'), "CHILD_MANAGEMENT_CONTROLS");
       if (context.noteId === "qa-window-a") {
@@ -117,6 +149,85 @@
       await window.desktopTabs.deleteNote("qa-window-a");
       result.restoredDelete = !(await window.desktopTabs.getWindowContext()).openNoteIds.includes("qa-window-a");
     } else {
+      if (navigator.platform.startsWith("Mac")) {
+        const button = await wait(() => document.querySelector('button[aria-label="查看便签"]:not(:disabled)'), "list button ready");
+        await window.desktopTabs.setPinnedWindow(true);
+        const bounds = button.getBoundingClientRect();
+        const now = new Date().toISOString();
+        await window.desktopTabs.saveNote({ id: "qa-window-native-click", content: JSON.stringify({
+          x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2,
+        }), attachments: [], createdAt: now, updatedAt: now, syncState: "local" });
+        await wait(() => document.querySelector(".note-window")?.dataset.windowFocused === "false", "native QA takes focus");
+        await wait(() => document.hasFocus(), "first mouse click activates main");
+        await wait(() => document.querySelector(".notes-popover"), "first mouse click opens note list");
+        result.firstClickOpensNotes = button.getAttribute("aria-expanded") === "true"
+          && document.activeElement === document.querySelector(".notes-search input");
+        const popover = document.querySelector(".notes-popover");
+        document.querySelector(".notes-search input").blur();
+        await settle();
+        check(popover.isConnected, "NON_FOCUSABLE_PANEL_CLICK_KEEPS_LIST");
+        result.nonFocusablePanelKeepsList = true;
+        document.querySelector(".notes-search input").focus();
+        button.focus();
+        await settle(); // Focus loss and click are separate native input events.
+        button.click();
+        await settle();
+        await wait(() => !document.querySelector(".notes-popover"), "focused list trigger closes note list once");
+        result.listTriggerClosesOnce = true;
+        button.click();
+        await settle();
+        await wait(() => document.querySelector(".notes-popover"), "list trigger reopens note list once");
+        result.listTriggerOpensOnce = true;
+        const actions = document.querySelector('button[aria-label="更多操作"]');
+        actions.focus();
+        await settle();
+        actions.click();
+        await settle();
+        await wait(() => document.querySelector(".actions-popover") && !document.querySelector(".notes-popover"), "switch from notes to actions once");
+        result.menuSwitchesOnce = true;
+        button.click();
+        await wait(() => document.querySelector(".notes-popover"), "notes reopened after actions");
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        await settle();
+        check(!document.querySelector(".notes-popover"), "ESCAPE_CLOSES_LIST");
+        result.escapeClosesList = true;
+        button.click();
+        await wait(() => document.querySelector(".notes-popover"), "notes reopened before outside click");
+        document.querySelector(".note-surface").click();
+        await settle();
+        await wait(() => !document.querySelector(".notes-popover"), "outside click closes note list");
+        result.outsideClickClosesList = true;
+        button.click();
+        await wait(() => document.querySelector(".notes-popover"), "notes reopened before focus leaves");
+        document.querySelector("textarea.note-content").focus();
+        await settle();
+        check(!document.querySelector(".notes-popover"), "FOCUS_OUTSIDE_CLOSES_LIST");
+        result.focusOutsideClosesList = true;
+        button.click();
+        await wait(() => document.querySelector(".notes-popover"), "notes reopened before window blur");
+        window.dispatchEvent(new FocusEvent("blur"));
+        await settle();
+        check(!document.querySelector(".notes-popover"), "WINDOW_BLUR_CLOSES_LIST");
+        result.windowBlurClosesList = true;
+        window.dispatchEvent(new FocusEvent("focus"));
+        await window.desktopTabs.deleteNote("qa-window-native-click");
+        await window.desktopTabs.setPinnedWindow(false);
+      }
+      // Safari can blur the auto-focused search field with relatedTarget=null
+      // before dispatching a row's click. Keep the original button connected
+      // across that native focus transition for both list actions.
+      const listButton = document.querySelector('button[aria-label="查看便签"]');
+      for (const key of ["B", "A"]) {
+        listButton.click();
+        const row = await wait(() => [...document.querySelectorAll(".popover-note")].find((button) => button.title === `窗口 ${key}`), "history row before blur");
+        check(!row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 })), "HISTORY_POINTER_DOWN_PRESERVES_SEARCH_FOCUS");
+        document.querySelector(".notes-search input").blur();
+        await settle();
+        check(row.isConnected, "HISTORY_ROW_SURVIVES_SEARCH_BLUR");
+        row.click();
+        await wait(() => document.querySelector("textarea.note-content")?.value.startsWith(`窗口 ${key}\n`), "history row selects note after blur");
+      }
+      result.historyRowsAfterSearchBlur = true;
       result.mainAttachmentImport = await checkAttachments("qa-window-a");
       // Use the actual main menu to open A rather than bypassing React handoff.
       document.querySelector('button[aria-label="更多操作"]').click();
@@ -137,8 +248,14 @@
       const listOpen = bRow.querySelector(".note-list-open");
       const list = document.querySelector(".notes-popover");
       result.listEntryLayout = listOpen.getBoundingClientRect().width <= 30 && list.scrollWidth <= list.clientWidth + 1;
+      check(!listOpen.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 })), "INDEPENDENT_POINTER_DOWN_PRESERVES_SEARCH_FOCUS");
+      document.querySelector(".notes-search input").blur();
+      await settle();
+      check(listOpen.isConnected, "INDEPENDENT_BUTTON_SURVIVES_SEARCH_BLUR");
       listOpen.click();
       await wait(async () => (await window.desktopTabs.getWindowContext()).openNoteIds.includes("qa-window-b"), "B opened from list");
+      result.independentAfterSearchBlur = true;
+      await wait(async () => (await window.desktopTabs.getWindowContext()).readyNoteIds.includes("qa-window-b"), "B ready before opening C");
       await window.desktopTabs.openNoteWindow("qa-window-c");
       result.multiple = (await window.desktopTabs.getWindowContext()).openNoteIds.length === 3;
       await wait(async () => (await window.desktopTabs.listNotes()).some((note) => note.id === "qa-window-a" && note.content.includes("CHILD_A_PASS")), "A checks");

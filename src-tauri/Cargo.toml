@@ -28,7 +28,7 @@ tempfile = "3"
 dirs = "6"
 open = "5"
 url = "2"
-reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "native-tls"] }
 tokio = { version = "1", features = ["sync", "time"] }
 keyring = { version = "3.6", features = ["apple-native", "windows-native"] }
 

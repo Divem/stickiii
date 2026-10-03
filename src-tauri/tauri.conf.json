@@ -27,6 +27,7 @@
       "visible": false,
       "resizable": true,
       "fullscreen": false,
+      "acceptFirstMouse": true,
       "dragDropEnabled": false
     }],
     "security": {

@@ -14,7 +14,7 @@
 ## 配置飞书
 
 1. 在飞书开放平台创建并发布企业自建应用，获取 App ID 和 App Secret。
-2. 在应用权限管理中申请“创建及编辑新版文档”“文本内容转换为云文档块”“添加云文档协作者”，完成管理员审批并发布新版本。
+2. 在应用权限管理中申请“创建及编辑新版文档”“文本内容转换为云文档块”“添加云文档协作者”以及云空间素材上传所需的云空间读写权限，完成管理员审批并发布新版本。
 3. 确保应用与协作者账号互相可见，协作者属于应用可访问的组织范围。
 4. 在贴贴便签右下角“设置 → 飞书”选择同步模式并填写 App ID / Secret。修改已保存配置时可将 Secret 留空，继续使用原 Secret。
 5. 选择“每条笔记创建新文档”时，填写自己的飞书账号邮箱；选择“追加到同一篇文档”时，粘贴目标文档链接，并在该飞书文档中通过“更多 → 添加文档应用”给本应用编辑权限。追加模式无需协作者邮箱，也不会修改目标文档的分享权限。
@@ -29,7 +29,7 @@
 ## 当前边界
 
 - 飞书同步为本地到云端的手动更新，不会把云端修改自动拉回本地。独立文档模式检测整个文档冲突；追加模式仅检测当前笔记章节，确认覆盖也只更新该章节。修改其他章节不阻断同步。
-- Markdown 图片以链接保留，文件附件仍在本地；暂未实现二进制素材上传、多维表格目标和新建知识库节点。
+- 网络 Markdown 图片以链接保留；便签中的本地图片会上传为飞书图片块，其他本地附件会上传为可下载的文件块。渲染层只发送附件 ID，Rust 从当前便签的受管目录读取字节，不发送本地路径。暂未实现多维表格目标和新建知识库节点。
 - Notion 远端写入、OAuth 用户授权、自动同步、双向合并和面向用户的同步历史尚未实现。
 - 追加模式每个章节最多 1000 个文档块。章节被部分删除或拆开时停止更新，不猜测索引范围删除其他内容。请求中断时保留未完成的章节事务，重试使用原始幂等标识恢复写入。
 - 远端更新采用先写新内容、再删除旧内容的顺序。中途失败可能暂时保留新旧两份内容，再次同步仍使用同一文档并恢复为当前内容。
@@ -37,7 +37,9 @@
 
 ## 验证记录（2026-10-03）
 
-自动化覆盖真实请求 URL / 方法 / JSON 契约、令牌缓存、首次创建、重复同步、云端冲突、权限错误、部分写入、分享失败、未知创建结果、表格清理与分批、Markdown 渲染和不安全链接拦截。章节测试覆盖多笔记追加、原有内容保留、单章更新、分章冲突、请求结果丢失后恢复、切换模式与目标、Wiki/DocX 链接复用及配置验证。接口测试使用模拟响应，不向真实租户写入。
+2026-10-04 发布前修复：创建图片/文件块的原生登记识别包含版本与幂等参数的 `/children` 请求；绑定素材时允许当前同步任务已登记的媒体块，正文与文档根块校验继续保留。Rust 回归覆盖创建回执到后续素材绑定、嵌套文件块登记、未登记块、其他文档与错误素材类型拒绝。此轮 37 项 Rust 测试、80 项前端契约与类型检查通过；没有执行真实租户写入。
+
+自动化覆盖真实请求 URL / 方法 / JSON 契约、令牌缓存、首次创建、重复同步、云端冲突、权限错误、部分写入、分享失败、未知创建结果、表格清理与分批、图片与文件素材块上传、Markdown 渲染和不安全链接拦截。章节测试覆盖多笔记追加、原有内容保留、单章更新、分章冲突、请求结果丢失后恢复、切换模式与目标、Wiki/DocX 链接复用及配置验证。接口测试使用模拟响应，不向真实租户写入。
 
 界面验证使用独立测试数据，检查编辑/预览切换、标题提取、320×260 与 440×390 布局、保存慢响应不覆盖新输入、配置表单及同步结果。真实飞书创建、追加、更新与账号访问权限仍待用户填写协作者邮箱或目标文档链接并主动同步后验收。
 
@@ -64,6 +66,7 @@ npm run build
 - [Markdown/HTML 转换文档块](https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/document-docx/docx-v1/document/convert)
 - [创建嵌套块](https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/document-docx/docx-v1/document-block-descendant/create)
 - [更新块](https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/document-docx/docx-v1/document-block/patch)
+- [上传素材](https://open.feishu.cn/document/server-docs/docs/drive-v1/media/upload_all)
 - [删除块](https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/document-docx/docx-v1/document-block-children/batch_delete)
 - [获取文档所有块](https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/document-docx/docx-v1/document-block/list)
 - [获取知识空间节点信息](https://open.feishu.cn/document/server-docs/docs/wiki-v2/space-node/get_node)

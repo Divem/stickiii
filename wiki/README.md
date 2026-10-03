@@ -13,11 +13,13 @@
 
 ## 交接
 
+- [v0.1.0 预发布交接](handover/release-v0-1-0.md)
 - [初始化交接](handover/initialization.md)
 
 - [飞书与 Markdown 使用及验收](handover/feishu-markdown.md)
-- [AI 润色使用与验收](handover/ai-polish.md)
-- [截图粘贴与文件拖入](handover/attachment-capture.md)
+- [AI 润色、翻译、扩写与解读使用及验收](handover/ai-polish.md)
+- [钥匙串授权与凭据读取](handover/keychain-access.md)
+- [截图粘贴、正文图片缩放与文件拖入](handover/attachment-capture.md)
 - [产品 Logo 与应用图标](handover/product-logo.md)
 - [Tauri 迁移、数据与 Windows 内网部署](handover/tauri-migration.md)
-- [独立便签窗口使用与验收](handover/independent-note-windows.md)
+- [独立便签窗口与列表交互验收](handover/independent-note-windows.md)

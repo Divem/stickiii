@@ -1,11 +1,10 @@
-import { hashText } from "../../shared/hash.js";
 import { randomUUID } from "../../shared/id.js";
 import { markdownForFeishu, markdownTitle } from "../../shared/markdown.js";
 import { feishuTargetKey, parseFeishuTarget, selectFeishuDocument } from "../../shared/feishuTarget.js";
 import { appendFeishuChapter } from "./feishuChapter.js";
 import type { FeishuDocument, Note, SyncResult, SyncWarning } from "../../shared/types.js";
 import type { NoteSyncAdapter, SyncContext } from "./types.js";
-import { FeishuApi, FeishuError, isId, isRevision, prepareBlockBatches, type Block, type Converted, type DocumentInfo, type FeishuFetch } from "./feishuApi.js";
+import { createMediaBlock, FeishuApi, FeishuError, isId, isRevision, noteSyncHash, prepareBlockBatches, type Block, type Converted, type DocumentInfo, type FeishuFetch } from "./feishuApi.js";
 
 export function createFeishuAdapter(fetcher: FeishuFetch = (url, init) => fetch(url, init), interval = 400, nativeApi?: FeishuApi): NoteSyncAdapter {
   const api = nativeApi ?? new FeishuApi(fetcher, interval);
@@ -37,12 +36,9 @@ export function createFeishuAdapter(fetcher: FeishuFetch = (url, init) => fetch(
       if (link.creationPending && !link.documentId) throw new FeishuError("create-uncertain");
       const token = await api.accessToken(config);
       const title = [...(markdownTitle(note.content) || "贴贴便签")].slice(0, 800).join("");
-      const hash = hashText(note.content);
+      const hash = noteSyncHash(note);
       const prepared = markdownForFeishu(note.content);
-      const warnings: SyncWarning[] = [
-        ...(note.attachments.length ? ["local-attachments" as const] : []),
-        ...(prepared.imageLinks ? ["image-links" as const] : []),
-      ];
+      const warnings: SyncWarning[] = prepared.imageLinks ? ["image-links"] : [];
       const readDocument = async (): Promise<DocumentInfo> => {
         const result = await api.request<{ data: { document: DocumentInfo } }>(`/docx/v1/documents/${link.documentId}`, "GET", undefined, token);
         const doc = result.data?.document;
@@ -99,8 +95,17 @@ export function createFeishuAdapter(fetcher: FeishuFetch = (url, init) => fetch(
       const oldChildren = await rootChildren();
       // Stage new blocks first; keep the old content until all new blocks are written.
       for (const batch of batches) await write(`${rootPath}/descendant`, "POST", { ...batch, index: -1 });
+      const mediaChildren: string[] = [];
+      for (const attachment of note.attachments) {
+        const documentId = link.documentId;
+        if (!documentId) throw new FeishuError("verification");
+        const media = await createMediaBlock(api, documentId, documentId, revision, attachment, token);
+        revision = media.revision;
+        mediaChildren.push(media.block.rootBlockId);
+        await checkpoint({ revisionId: revision, contentHash: undefined, syncedAt: undefined });
+      }
       const stagedChildren = await rootChildren();
-      const newCount = batches.reduce((total, batch) => total + batch.children_id.length, 0);
+      const newCount = batches.reduce((total, batch) => total + batch.children_id.length, 0) + mediaChildren.length;
       if (stagedChildren.length !== oldChildren.length + newCount || oldChildren.some((id, index) => stagedChildren[index] !== id)) {
         throw new FeishuError("remote-changed");
       }

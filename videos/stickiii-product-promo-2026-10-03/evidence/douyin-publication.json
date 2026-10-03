@@ -1,0 +1,37 @@
+{
+  "platform": "Douyin",
+  "account": "imyuanwen",
+  "displayName": "达尔文",
+  "status": "published",
+  "visibility": "public",
+  "workId": "7692470328483745058",
+  "url": "https://www.douyin.com/video/7692470328483745058",
+  "creatorDetailUrl": "https://creator.douyin.com/creator-micro/work-management/work-detail/7692470328483745058?enter_from=content",
+  "title": "贴贴便签：灵感先贴下来",
+  "description": "灵感来了，先贴下来。 Stickiii · 贴贴便签，一款本地优先的桌面随手记。快捷键唤起、Markdown 编辑与预览、多便签独立窗口，把临时想法先留在本机，需要时再整理到飞书。 当前为 0.1.0 预发布。AI 与飞书功能需配置后使用，Windows 运行待验收。 #贴贴便签 #桌面便签 #效率工具 #开源软件",
+  "duration": 50,
+  "video": "renders/stickiii-product-promo-1080p.mp4",
+  "videoSha256": "5f0a5c4ef2cc45a8e2203c8ee1b8d9f24f95ef2c0959f1d6bc09d57808e019d4",
+  "covers": {
+    "horizontal": "covers/cover-4x3.png",
+    "vertical": "covers/cover-3x4.png"
+  },
+  "declaration": "内容含营销推广信息",
+  "publishedAtVisible": "2026年10月03日 23:54",
+  "captionCorrection": {
+    "reason": "Creator editor converted blank paragraph breaks into literal asterisks",
+    "action": "Updated the same published work to one paragraph without changing its wording",
+    "status": "applied; no longer marked 修改审核中",
+    "duplicatePublication": false
+  },
+  "verification": [
+    "Publishing produced 发布成功 toast",
+    "Creator manager shows 00:50 and 已发布 for the matching work",
+    "Creator detail shows 作品状态正常",
+    "Public video page rendered the matching title, author and 00:50 playback",
+    "Caption correction passed review and the manager now shows clean text without asterisks"
+  ],
+  "platformCoverSuggestion": "Horizontal cover was flagged by the automated checker as screenshot-based; publishing was allowed and the approved product screenshot cover was preserved",
+  "evidence": "douyin-publication-result.png",
+  "browser": "ego-browser TaskSpace 67"
+}

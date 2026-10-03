@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import MarkdownPreview from '../src/renderer/MarkdownPreview.tsx';
-import { markdownForFeishu, markdownTitle, externalWebUrl } from '../src/shared/markdown.ts';
+import { markdownForFeishu, markdownTitle, externalWebUrl, attachmentImageMarkdown, contentWithAttachmentImages, noteContentBlocks, removeAttachmentImages } from '../src/shared/markdown.ts';
 
 const render = (content) => renderToStaticMarkup(createElement(MarkdownPreview, { content, locale: 'zh', onOpenLink: () => {} }));
 
@@ -65,4 +65,46 @@ test('Feishu image conversion preserves direct and referenced URLs without chang
   assert.ok(converted.content.includes('https://example.com/second.png'));
   assert.ok(original.includes('![截图]'));
   assert.equal(markdownForFeishu('```md\n![literal](https://example.com/a)\n```').imageLinks, false);
+});
+
+const image = { id: 'local-image', name: '图[1].png', mimeType: 'image/png', size: 68, storedPath: '/managed/image.png', previewDataUrl: 'data:image/png;base64,YWJj' };
+
+test('managed images split editable text before and after the image without interpreting code examples', () => {
+  const marker = attachmentImageMarkdown(image);
+  const content = `前面的文字\n\n${marker}\n\n后面的文字\n\n\`\`\`md\n${marker}\n\`\`\``;
+  const blocks = noteContentBlocks(content, [image]);
+  assert.deepEqual(blocks.map((block) => block.type), ['text', 'image', 'text']);
+  assert.equal(blocks[0].text, '前面的文字');
+  assert.ok(blocks[2].text.includes('后面的文字'));
+  assert.equal(content.slice(blocks[1].start, blocks[1].end), marker);
+  const removed = removeAttachmentImages(content, image.id);
+  assert.ok(removed.includes(`\`\`\`md\n${marker}\n\`\`\``));
+  assert.equal((removed.match(/attachment:local-image/g) ?? []).length, 1);
+  assert.equal(noteContentBlocks(`![foreign](attachment:other)`, [image])[0].type, 'text');
+});
+
+test('old image attachments display without duplicating existing references or rewriting plain text', () => {
+  const body = contentWithAttachmentImages('Original', [image]);
+  assert.ok(body.startsWith('Original\n\n!'));
+  assert.equal(contentWithAttachmentImages(body, [image]), body);
+  assert.equal(contentWithAttachmentImages('Original', [{ ...image, mimeType: 'text/plain' }]), 'Original');
+});
+
+test('Markdown preview resolves only images belonging to the note and rejects local references as links', () => {
+  const html = renderToStaticMarkup(createElement(MarkdownPreview, {
+    content: `${attachmentImageMarkdown(image)}\n\n![other](attachment:other)\n\n[local](attachment:local-image)\n\n![raw](data:image/png;base64,abc)`,
+    noteId: 'A', attachments: [image], locale: 'zh', onOpenLink: () => {},
+  }));
+  assert.ok(html.includes('src="data:image/png;base64,YWJj"'));
+  assert.equal(html.includes('src="attachment:'), false);
+  assert.equal(html.includes('href="attachment:'), false);
+  assert.equal(html.includes('src="data:image/png;base64,abc"'), false);
+});
+
+test('Feishu receives an image name for local images without a local path or unusable attachment link', () => {
+  const prepared = markdownForFeishu(attachmentImageMarkdown(image));
+  assert.equal(prepared.imageLinks, false);
+  assert.equal(prepared.content.includes('attachment:'), false);
+  assert.equal(prepared.content.includes('/managed'), false);
+  assert.ok(prepared.content.includes('图'));
 });

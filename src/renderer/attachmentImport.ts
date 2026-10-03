@@ -1,4 +1,5 @@
 import type { Note, NoteAttachment } from "../shared/types.js";
+import { attachmentImageMarkdown, contentWithAttachmentImages } from "../shared/markdown.js";
 
 export const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 export const MAX_IMPORT_FILES = 20;
@@ -10,9 +11,25 @@ export function clipboardImages(data: DataTransfer): File[] {
   return Array.from(data.files).filter((file) => file.type.startsWith("image/"));
 }
 
-export function appendAttachments(current: Note | undefined, attachments: NoteAttachment[]): Note | undefined {
+export type ImageInsertion = { content: string; start: number; end: number };
+
+export function appendAttachments(current: Note | undefined, attachments: NoteAttachment[], insertion?: ImageInsertion): Note | undefined {
   if (!current || !attachments.length) return current;
-  return { ...current, attachments: [...current.attachments, ...attachments], updatedAt: new Date().toISOString() };
+  const images = attachments.filter((item) => item.mimeType.startsWith("image/"));
+  let content = current.content;
+  if (images.length) {
+    content = contentWithAttachmentImages(content, current.attachments);
+    // During an async import the user can keep typing. Preserve all newer text;
+    // if its prefix changed, append rather than guessing which edit to replace.
+    const start = insertion && content.startsWith(insertion.content.slice(0, insertion.start))
+      ? Math.min(insertion.start, content.length) : content.length;
+    const end = insertion && content === insertion.content ? insertion.end : start;
+    const before = content.slice(0, start);
+    const after = content.slice(end);
+    content = before + (before && !before.endsWith("\n\n") ? before.endsWith("\n") ? "\n" : "\n\n" : "")
+      + images.map(attachmentImageMarkdown).join("\n\n") + "\n\n" + after;
+  }
+  return { ...current, content, attachments: [...current.attachments, ...attachments], updatedAt: new Date().toISOString() };
 }
 
 export async function importAttachmentBatch(files: File[], importFile: (file: File) => Promise<NoteAttachment>):

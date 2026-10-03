@@ -1,14 +1,13 @@
-import { hashText } from "../../shared/hash.js";
 import { randomUUID } from "../../shared/id.js";
+import { hashText } from "../../shared/hash.js";
 import { markdownForFeishu, markdownTitle } from "../../shared/markdown.js";
 import { feishuTargetKey, parseFeishuTarget, type FeishuTarget } from "../../shared/feishuTarget.js";
 import type { FeishuChapterPending, FeishuDocument, Note, SyncResult, SyncWarning } from "../../shared/types.js";
 import type { SyncContext } from "./types.js";
-import { FeishuApi, FeishuError, isId, isObject, isRevision, prepareBlockBatches, type Block, type Converted, type DocumentInfo } from "./feishuApi.js";
+import { createMediaBlock, FeishuApi, FeishuError, isId, isObject, isRevision, noteSyncHash, prepareBlockBatches, type Block, type Converted, type DocumentInfo } from "./feishuApi.js";
 
 type Snapshot = { revision: number; roots: string[]; blocks: Map<string, Block> };
 const hash = hashText;
-
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
   if (!isObject(value)) return value;
@@ -38,7 +37,6 @@ export async function appendFeishuChapter(api: FeishuApi, note: Note, context: S
   let link = structuredClone(initial);
   const config = context.credentials!;
   const warnings: SyncWarning[] = [];
-  if (note.attachments.length) warnings.push("local-attachments");
   const checkpoint = async (patch: Partial<FeishuDocument>) => {
     link = { ...link, ...patch };
     if (!context.saveFeishuDocument) throw new FeishuError("local-save");
@@ -121,7 +119,19 @@ export async function appendFeishuChapter(api: FeishuApi, note: Note, context: S
         await checkpoint({ revisionId: response.data.document_revision_id, chapter: { ...link.chapter!, pending } });
       }
       let snapshot = await readSnapshot();
-      const inserted = pending.insertedBlockIds!;
+      let inserted = pending.insertedBlockIds!;
+      const mediaAttachments = pending.mediaAttachments ?? [];
+      const mediaBlockIds = pending.mediaBlockIds ?? [];
+      if (mediaBlockIds.length > mediaAttachments.length) throw new FeishuError("verification");
+      const mediaIndex = () => chapterIndex(snapshot, inserted) + inserted.length;
+      for (let index = mediaBlockIds.length; index < mediaAttachments.length; index += 1) {
+        await assertRevision(snapshot.revision);
+        const media = await createMediaBlock(api, documentId, documentId, snapshot.revision, mediaAttachments[index], token, mediaIndex());
+        inserted = [...inserted, media.block.rootBlockId];
+        pending = { ...pending, insertedBlockIds: inserted, mediaBlockIds: [...mediaBlockIds, media.block.rootBlockId] };
+        await checkpoint({ revisionId: media.revision, chapter: { ...link.chapter!, pending } });
+        snapshot = await readSnapshot();
+      }
       chapterIndex(snapshot, inserted);
       const remainingOld = pending.oldBlockIds.filter((id) => snapshot.blocks.has(id));
       if (remainingOld.length && remainingOld.length !== pending.oldBlockIds.length) throw new FeishuError("chapter-missing");
@@ -149,7 +159,7 @@ export async function appendFeishuChapter(api: FeishuApi, note: Note, context: S
     const index = chapterIndex(snapshot, oldIds);
     const oldFingerprint = oldIds.length ? chapterFingerprint(snapshot, oldIds) : undefined;
     if (oldIds.length && oldFingerprint !== link.chapter?.fingerprint && !context.options?.overwriteRemote) throw new FeishuError("chapter-conflict");
-    const contentHash = hash(note.content);
+    const contentHash = noteSyncHash(note);
     const firstLine = markdownTitle(note.content);
     const title = [...(firstLine || "贴贴便签")].slice(0, 800).join("");
     const newline = /\r\n|\r|\n/.exec(note.content);
@@ -171,10 +181,12 @@ export async function appendFeishuChapter(api: FeishuApi, note: Note, context: S
       { block_id: headingId, block_type: 3, heading1: { elements: [{ text_run: { content: title } }] } }, ...converted.blocks,
     ] };
     const batches = prepareBlockBatches(converted);
-    if (batches.length !== 1) throw new FeishuError("chapter-too-large");
+    if (batches.length !== 1 || batches[0].children_id.length + note.attachments.length > 1000) throw new FeishuError("chapter-too-large");
     await assertRevision(snapshot.revision);
     const pending: FeishuChapterPending = { phase: "insert", clientToken: randomUUID(), revisionId: snapshot.revision,
-      contentHash, oldBlockIds: oldIds, oldFingerprint, body: { ...batches[0], index } };
+      contentHash, oldBlockIds: oldIds, oldFingerprint,
+      mediaAttachments: note.attachments.map(({ id, name, mimeType, size }) => ({ id, name, mimeType, size })),
+      body: { ...batches[0], index } };
     await checkpoint({ mode: "append", chapter: { blockIds: oldIds, fingerprint: oldFingerprint, pending } });
     await completePending(false);
     return { status: "synced", provider: "feishu", remoteUrl: target.url, warnings };

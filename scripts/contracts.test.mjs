@@ -132,7 +132,7 @@ test("unimplemented Notion has no visible renderer entry point", async () => {
 test("credentials use the system vault and the bridge receives no bearer tokens", async () => {
   const [native, bridge] = await Promise.all([read("src-tauri/src/credentials.rs"), read("src/renderer/desktop.ts")]);
   assert.match(native, /keyring::Entry/);
-  assert.match(native, /remove\("appSecret"\)/);
+  assert.match(native, /struct PublicConfig/);
   assert.doesNotMatch(bridge, /tenant_access_token/);
   assert.match(bridge, /appSecret: ""/);
 });

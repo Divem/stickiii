@@ -2,7 +2,7 @@ import test, { afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { mockIPC, clearMocks } from "@tauri-apps/api/mocks";
 import { desktopTabs } from "../src/renderer/desktop.ts";
-import { hashText } from "../src/shared/hash.ts";
+import { noteSyncHash } from "../src/platform/sync/feishuApi.ts";
 
 globalThis.window = Object.assign(new EventTarget(), { crypto: globalThis.crypto });
 const emit = async (event, detail) => window.dispatchEvent(new CustomEvent(`desk-tabs:${event}`, { detail }));
@@ -10,6 +10,21 @@ afterEach(() => clearMocks());
 
 const note = { id: "native-note", content: "Title\nbody", attachments: [], createdAt: "", updatedAt: "", syncState: "local" };
 const config = { provider: "feishu", appId: "cli_native", appSecretConfigured: true, collaboratorEmail: "user@example.com", syncMode: "create", updatedAt: "" };
+
+test("configuration reads default to public metadata and legacy access must be requested explicitly", async () => {
+  const calls = [];
+  mockIPC((command, payload) => { calls.push({ command, payload }); return command === "list_sync_configs" ? [] : null; });
+  await desktopTabs.listSyncConfigs();
+  await desktopTabs.getAiConfig();
+  await desktopTabs.listSyncConfigs(true);
+  await desktopTabs.getAiConfig(true);
+  assert.deepEqual(calls, [
+    { command: "list_sync_configs", payload: { loadSaved: false } },
+    { command: "get_ai_config", payload: { loadSaved: false } },
+    { command: "list_sync_configs", payload: { loadSaved: true } },
+    { command: "get_ai_config", payload: { loadSaved: true } },
+  ]);
+});
 
 test("native synchronization keeps authentication out of the renderer and checkpoints identity before writing", async () => {
   const calls = [];
@@ -43,7 +58,7 @@ test("native synchronization keeps authentication out of the renderer and checkp
   const result = await desktopTabs.syncNote(note, "feishu");
   assert.equal(result.status, "synced");
   assert.equal(result.note.feishu.documentId, "NativeDoc");
-  assert.equal(document.contentHash, hashText(note.content));
+  assert.equal(document.contentHash, noteSyncHash(note));
   assert.ok(calls.every(({ payload }) => !JSON.stringify(payload).includes("tenant_access_token")));
   assert.ok(calls.filter(({ command }) => command === "feishu_request").every(({ payload }) => !payload.headers && !payload.appSecret));
 });

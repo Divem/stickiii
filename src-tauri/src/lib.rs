@@ -46,6 +46,62 @@ fn trusted_url(url: &url::Url) -> bool {
             && url.port() == Some(5173))
 }
 
+fn register_media_nodes(
+    value: &Value,
+    parent_type: &str,
+    block_type: i64,
+    nodes: &mut HashMap<String, String>,
+) {
+    let Some(object) = value.as_object() else {
+        return;
+    };
+    if object.get("block_type").and_then(Value::as_i64) == Some(block_type) {
+        if let Some(id) = object
+            .get("block_id")
+            .and_then(Value::as_str)
+            .filter(|id| sync::is_id(id))
+        {
+            nodes.insert(id.to_owned(), parent_type.to_owned());
+        }
+    }
+    if let Some(children) = object.get("children").and_then(Value::as_array) {
+        for child in children {
+            register_media_nodes(child, parent_type, block_type, nodes);
+        }
+    }
+}
+
+fn register_created_media(
+    path: &str,
+    method: &str,
+    body: &Value,
+    response: &Value,
+    nodes: &mut HashMap<String, String>,
+) {
+    if method != "POST"
+        || !path
+            .split('?')
+            .next()
+            .is_some_and(|route| route.ends_with("/children"))
+    {
+        return;
+    }
+    let Some(block_type) = body["children"]
+        .as_array()
+        .and_then(|children| children.first())
+        .and_then(|child| child["block_type"].as_i64())
+        .filter(|kind| matches!(kind, 23 | 27))
+    else {
+        return;
+    };
+    let parent_type = if block_type == 27 {
+        "docx_image"
+    } else {
+        "docx_file"
+    };
+    register_media_nodes(&response["data"], parent_type, block_type, nodes);
+}
+
 fn guard(window: &WebviewWindow) -> Result<(), String> {
     if window.label() != "main" || !window.url().is_ok_and(|url| trusted_url(&url)) {
         return Err("UNTRUSTED_WINDOW".into());
@@ -388,6 +444,29 @@ fn request_exit(window: WebviewWindow, app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 #[tauri::command]
+async fn attachment_preview(
+    window: WebviewWindow,
+    app: AppHandle,
+    note_id: String,
+    attachment_id: String,
+) -> Result<String, String> {
+    note_windows::guard(&window, &app.state::<AppState>())?;
+    let label = window.label().to_owned();
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let registry = state.windows.lock().map_err(|_| "WINDOW_UNAVAILABLE")?;
+        registry.authorize(&label, &note_id, false)?;
+        let store = state
+            .store
+            .lock()
+            .map_err(|_| "ATTACHMENT_PREVIEW_FAILED")?;
+        store.attachment_preview(&note_id, &attachment_id)
+    })
+    .await
+    .map_err(|_| "ATTACHMENT_PREVIEW_FAILED")?
+}
+
+#[tauri::command]
 fn open_attachment(
     window: WebviewWindow,
     state: State<AppState>,
@@ -436,13 +515,21 @@ fn open_external_link(window: WebviewWindow, url: String) -> Result<bool, String
     Ok(open::that_detached(parsed.as_str()).is_ok())
 }
 #[tauri::command]
-fn list_sync_configs(window: WebviewWindow, state: State<AppState>) -> Result<Vec<Value>, String> {
+fn list_sync_configs(
+    window: WebviewWindow,
+    state: State<AppState>,
+    load_saved: Option<bool>,
+) -> Result<Vec<Value>, String> {
     note_windows::guard(&window, &state)?;
+    let load_saved = load_saved.unwrap_or(false);
+    if load_saved {
+        guard(&window)?;
+    }
     state
         .configs
         .lock()
         .map_err(|_| "SYNC_CONFIG_UNAVAILABLE")?
-        .list()
+        .list(load_saved)
 }
 #[tauri::command]
 fn save_sync_config(
@@ -471,13 +558,21 @@ fn clear_sync_config(
         .clear(&provider))
 }
 #[tauri::command]
-fn get_ai_config(window: WebviewWindow, state: State<AppState>) -> Result<Option<Value>, String> {
+fn get_ai_config(
+    window: WebviewWindow,
+    state: State<AppState>,
+    load_saved: Option<bool>,
+) -> Result<Option<Value>, String> {
     note_windows::guard(&window, &state)?;
+    let load_saved = load_saved.unwrap_or(false);
+    if load_saved {
+        guard(&window)?;
+    }
     state
         .ai_configs
         .lock()
         .map_err(|_| "AI_CONFIG_UNAVAILABLE")?
-        .get()
+        .get(load_saved)
 }
 #[tauri::command]
 fn save_ai_config(
@@ -899,6 +994,7 @@ fn sync_begin(
     let mut store = state.store.lock().map_err(|_| "LOCAL_SAVE_FAILED")?;
     let mut snapshot = note.clone();
     if let Some(stored) = store.notes.iter().find(|n| n["id"] == id) {
+        snapshot["attachments"] = stored["attachments"].clone();
         for key in ["feishu", "feishuTargets"] {
             snapshot.as_object_mut().unwrap().remove(key);
             if let Some(value) = stored.get(key) {
@@ -1005,7 +1101,7 @@ async fn feishu_request(
     body: Value,
 ) -> Result<Value, FeishuError> {
     note_windows::guard(&window, &state).map_err(|_| FeishuError::new("permission", false))?;
-    let credentials = {
+    let upload = {
         let registry = state
             .windows
             .lock()
@@ -1028,14 +1124,66 @@ async fn feishu_request(
             return Err(FeishuError::new("permission", false));
         }
         session.touched = tokio::time::Instant::now();
-        session.credentials.clone()
+        if path == "/drive/v1/medias/upload_all" {
+            Some((
+                session.credentials.clone(),
+                session.note_id.clone(),
+                body["attachment_id"].as_str().unwrap().to_owned(),
+                body["parent_type"].as_str().unwrap().to_owned(),
+                body["parent_node"].as_str().unwrap().to_owned(),
+            ))
+        } else {
+            None
+        }
     };
-    let response = state
-        .network
-        .lock()
-        .await
-        .request(&credentials, &path, &method, &body)
-        .await?;
+    let response =
+        if let Some((credentials, note_id, attachment_id, parent_type, parent_node)) = upload {
+            let (name, mime, bytes) = state
+                .store
+                .lock()
+                .map_err(|_| FeishuError::new("attachment-read", false))?
+                .read_attachment_for_sync(&note_id, &attachment_id)
+                .map_err(|_| FeishuError::new("attachment-read", false))?;
+            if (parent_type == "docx_image") != mime.starts_with("image/") {
+                return Err(FeishuError::new("invalid-attachment", false));
+            }
+            state
+                .network
+                .lock()
+                .await
+                .upload_media(
+                    &credentials,
+                    &name,
+                    &mime,
+                    bytes,
+                    &parent_type,
+                    &parent_node,
+                )
+                .await?
+        } else {
+            let credentials = {
+                let sessions = state
+                    .sessions
+                    .lock()
+                    .map_err(|_| FeishuError::new("busy", false))?;
+                sessions
+                    .get(&job_id)
+                    .ok_or_else(|| FeishuError::new("permission", false))?
+                    .credentials
+                    .clone()
+            };
+            state
+                .network
+                .lock()
+                .await
+                .request(&credentials, &path, &method, &body)
+                .await?
+        };
+    if let Ok(mut sessions) = state.sessions.lock() {
+        if let Some(session) = sessions.get_mut(&job_id) {
+            register_created_media(&path, &method, &body, &response, &mut session.media_nodes);
+        }
+    }
     if path == "/docx/v1/documents" || path.starts_with("/wiki/v2/spaces/get_node?") {
         let id = if path == "/docx/v1/documents" {
             response["data"]["document"]["document_id"].as_str()
@@ -1085,6 +1233,7 @@ pub fn run() {
             close_note_window,
             pick_files,
             import_attachment,
+            attachment_preview,
             open_attachment,
             open_external_link,
             list_sync_configs,
@@ -1137,11 +1286,13 @@ pub fn run() {
                     .filter(|configs| valid_shortcuts(configs))
                     .unwrap_or_else(defaults);
             let windows = note_windows::Registry::load(&store.root)?;
+            let configs = ConfigStore::system(&store.root);
+            let ai_configs = ai::ConfigStore::system(&store.root);
             app.manage(AppState {
                 store: Mutex::new(store),
                 windows: Mutex::new(windows),
-                configs: Mutex::new(ConfigStore::system()),
-                ai_configs: Mutex::new(ai::ConfigStore::system()),
+                configs: Mutex::new(configs),
+                ai_configs: Mutex::new(ai_configs),
                 ai_busy: AtomicBool::new(false),
                 shortcuts: Mutex::new(shortcuts.clone()),
                 sessions: Mutex::new(HashMap::new()),
@@ -1226,6 +1377,57 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn created_media_with_query_parameters_can_be_bound_only_as_its_registered_kind() {
+        let mut session = sync::new_session(
+            &json!({"id":"note","content":"text","attachments":[]}),
+            json!({"appId":"app","syncMode":"create"}),
+        );
+        session.documents.insert("Known".into());
+        let path = "/docx/v1/documents/Known/blocks/Known/children?document_revision_id=1&client_token=abc";
+        register_created_media(
+            path,
+            "POST",
+            &json!({"children":[{"block_type":27,"image":{}}]}),
+            &json!({"data":{"children":[{"block_type":27,"block_id":"ImageBlock"}]}}),
+            &mut session.media_nodes,
+        );
+        assert!(sync::allowed_request(
+            &session,
+            "/docx/v1/documents/Known/blocks/ImageBlock?document_revision_id=2&client_token=abc",
+            "PATCH",
+            &json!({"replace_image":{"token":"uploaded"}})
+        ));
+        assert!(!sync::allowed_request(
+            &session,
+            "/docx/v1/documents/Known/blocks/ImageBlock?document_revision_id=2&client_token=abc",
+            "PATCH",
+            &json!({"replace_file":{"token":"uploaded"}})
+        ));
+        register_created_media(
+            path,
+            "POST",
+            &json!({"children":[{"block_type":23,"file":{}}]}),
+            &json!({"data":{"children":[{"block_type":33,"block_id":"Wrapper","children":[{"block_type":23,"block_id":"FileBlock"}]}]}}),
+            &mut session.media_nodes,
+        );
+        assert!(sync::allowed_request(
+            &session,
+            "/docx/v1/documents/Known/blocks/FileBlock?document_revision_id=3&client_token=abc",
+            "PATCH",
+            &json!({"replace_file":{"token":"uploaded"}})
+        ));
+        assert!(!session.media_nodes.contains_key("Wrapper"));
+        register_created_media(
+            path,
+            "GET",
+            &json!({"children":[{"block_type":27,"image":{}}]}),
+            &json!({"data":{"children":[{"block_type":27,"block_id":"Uncreated"}]}}),
+            &mut session.media_nodes,
+        );
+        assert!(!session.media_nodes.contains_key("Uncreated"));
+    }
+
     #[test]
     fn shortcut_aliases_cannot_register_duplicate_keys() {
         assert!(valid_shortcuts(&defaults()));

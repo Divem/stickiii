@@ -1,7 +1,10 @@
 use crate::credentials::parse_target;
 use serde::Serialize;
 use serde_json::{json, Value};
-use std::{collections::HashSet, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    time::Duration,
+};
 use tokio::time::{sleep, Instant};
 
 #[derive(Clone)]
@@ -11,6 +14,8 @@ pub struct SyncSession {
     pub content: String,
     pub credentials: Value,
     pub documents: HashSet<String>,
+    pub attachments: HashMap<String, Value>,
+    pub media_nodes: HashMap<String, String>,
     pub touched: Instant,
 }
 
@@ -54,6 +59,16 @@ pub fn target_key(config: &Value) -> String {
 
 pub fn new_session(note: &Value, config: Value) -> SyncSession {
     let mut documents = HashSet::new();
+    let attachments = note["attachments"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|attachment| {
+            attachment["id"]
+                .as_str()
+                .map(|id| (id.to_owned(), attachment.clone()))
+        })
+        .collect();
     let key = target_key(&config);
     let histories = note.get("feishu").into_iter().chain(
         note["feishuTargets"]
@@ -85,6 +100,8 @@ pub fn new_session(note: &Value, config: Value) -> SyncSession {
         content: note["content"].as_str().unwrap().into(),
         credentials: config,
         documents,
+        attachments,
+        media_nodes: HashMap::new(),
         touched: Instant::now(),
     }
 }
@@ -143,12 +160,31 @@ pub fn allowed_request(session: &SyncSession, path: &str, method: &str, body: &V
                 && allowed_query(&["page_size", "page_token", "document_revision_id"])
         }
         ["docx", "v1", "documents", id, "blocks", block] => {
+            let text_patch = !append && body["update_text_elements"].is_object();
+            let media_patch = session.media_nodes.get(*block).is_some_and(|kind| {
+                (kind == "docx_image" && body["replace_image"].is_object())
+                    || (kind == "docx_file" && body["replace_file"].is_object())
+            });
             session.documents.contains(*id)
+                && ((method == "GET" && id == block && query.is_empty())
+                    || (method == "PATCH"
+                        && allowed_query(&["document_revision_id", "client_token"])
+                        && ((id == block && text_patch) || media_patch)))
+        }
+        ["docx", "v1", "documents", id, "blocks", block, "children"] => {
+            method == "POST"
+                && session.documents.contains(*id)
                 && id == block
-                && ((method == "GET" && query.is_empty())
-                    || (!append
-                        && method == "PATCH"
-                        && allowed_query(&["document_revision_id", "client_token"])))
+                && allowed_query(&["document_revision_id", "client_token"])
+                && body["index"].as_i64().is_some()
+                && body["children"].as_array().is_some_and(|children| {
+                    children.len() == 1
+                        && children[0]["block_type"]
+                            .as_i64()
+                            .is_some_and(|kind| kind == 23 || kind == 27)
+                        && ((children[0]["block_type"] == 27 && children[0]["image"].is_object())
+                            || (children[0]["block_type"] == 23 && children[0]["file"].is_object()))
+                })
         }
         ["docx", "v1", "documents", id, "blocks", block, "descendant"] => {
             method == "POST"
@@ -175,6 +211,28 @@ pub fn allowed_request(session: &SyncSession, path: &str, method: &str, body: &V
                 && body["member_id"] == session.credentials["collaboratorEmail"]
                 && body["perm"] == "edit"
                 && body["type"] == "user"
+        }
+        ["drive", "v1", "medias", "upload_all"] => {
+            method == "POST"
+                && query.is_empty()
+                && body["attachment_id"]
+                    .as_str()
+                    .is_some_and(|id| session.attachments.contains_key(id))
+                && body["parent_node"].as_str().is_some_and(|node| is_id(node))
+                && body["parent_type"].as_str().is_some_and(|kind| {
+                    matches!(kind, "docx_image" | "docx_file")
+                        && session
+                            .media_nodes
+                            .get(body["parent_node"].as_str().unwrap())
+                            .is_some_and(|registered| registered == kind)
+                })
+                && body.get("file_name").is_none_or(|name| {
+                    name.as_str()
+                        .is_some_and(|name| !name.is_empty() && name.len() <= 1024)
+                })
+                && body
+                    .get("size")
+                    .is_none_or(|size| size.as_u64().is_some_and(|size| size <= 20 * 1024 * 1024))
         }
         _ => false,
     }
@@ -275,13 +333,7 @@ impl Network {
         unreachable!()
     }
 
-    pub async fn request(
-        &mut self,
-        config: &Value,
-        path: &str,
-        method: &str,
-        body: &Value,
-    ) -> Result<Value, FeishuError> {
+    async fn ensure_token(&mut self, config: &Value) -> Result<String, FeishuError> {
         let app_id = config["appId"]
             .as_str()
             .ok_or_else(|| FeishuError::new("auth", false))?;
@@ -321,8 +373,90 @@ impl Network {
                 expires: Instant::now() + Duration::from_secs(expire.saturating_sub(60).min(86400)),
             });
         }
-        let token = self.token.as_ref().unwrap().value.clone();
+        Ok(self.token.as_ref().unwrap().value.clone())
+    }
+
+    pub async fn request(
+        &mut self,
+        config: &Value,
+        path: &str,
+        method: &str,
+        body: &Value,
+    ) -> Result<Value, FeishuError> {
+        let token = self.ensure_token(config).await?;
         self.raw(path, method, body, Some(&token)).await
+    }
+
+    pub async fn upload_media(
+        &mut self,
+        config: &Value,
+        name: &str,
+        mime: &str,
+        bytes: Vec<u8>,
+        parent_type: &str,
+        parent_node: &str,
+    ) -> Result<Value, FeishuError> {
+        let token = self.ensure_token(config).await?;
+        for attempt in 0..3 {
+            sleep(self.next_request.saturating_duration_since(Instant::now())).await;
+            self.next_request = Instant::now() + Duration::from_millis(400);
+            let file = reqwest::multipart::Part::bytes(bytes.clone())
+                .file_name(name.to_owned())
+                .mime_str(mime)
+                .map_err(|_| FeishuError::new("invalid-attachment", false))?;
+            let form = reqwest::multipart::Form::new()
+                .text("file_name", name.to_owned())
+                .text("parent_type", parent_type.to_owned())
+                .text("parent_node", parent_node.to_owned())
+                .text("size", bytes.len().to_string())
+                .part("file", file);
+            let response = self
+                .client
+                .post("https://open.feishu.cn/open-apis/drive/v1/medias/upload_all")
+                .bearer_auth(&token)
+                .multipart(form)
+                .send()
+                .await
+                .map_err(|_| FeishuError::new("network", true))?;
+            let status = response.status();
+            let data: Value = response
+                .json()
+                .await
+                .map_err(|_| FeishuError::new("network", true))?;
+            let code = data["code"]
+                .as_i64()
+                .ok_or_else(|| FeishuError::new("network", true))?;
+            if status.as_u16() == 429 || code == 99991400 {
+                if attempt < 2 {
+                    sleep(Duration::from_millis(800 * 2u64.pow(attempt))).await;
+                    continue;
+                }
+                return Err(FeishuError {
+                    message: "rate-limit".into(),
+                    api_code: Some(code),
+                    uncertain: false,
+                });
+            }
+            if !status.is_success() || code != 0 {
+                let message = if status.as_u16() == 401 || code == 99991663 {
+                    "auth"
+                } else if status.as_u16() == 403 || matches!(code, 99991672 | 131006) {
+                    "permission"
+                } else {
+                    "feishu-api"
+                };
+                if message == "auth" {
+                    self.token = None;
+                }
+                return Err(FeishuError {
+                    message: message.into(),
+                    api_code: Some(code),
+                    uncertain: status.is_server_error(),
+                });
+            }
+            return Ok(data);
+        }
+        unreachable!()
     }
 }
 
@@ -382,6 +516,65 @@ mod tests {
             "/docx/v1/documents/Target",
             "DELETE",
             &Value::Null
+        ));
+    }
+
+    #[test]
+    fn media_upload_requires_a_bound_attachment_and_created_media_block() {
+        let note = json!({
+            "id":"note",
+            "content":"text",
+            "attachments":[{"id":"image","name":"a.png","mimeType":"image/png","size":4,"storedPath":"/managed/a.png"}]
+        });
+        let mut session = new_session(
+            &note,
+            json!({"appId":"app","syncMode":"create","collaboratorEmail":"user@example.com"}),
+        );
+        session.documents.insert("Known".into());
+        assert!(allowed_request(
+            &session,
+            "/docx/v1/documents/Known/blocks/Known/children?document_revision_id=1&client_token=abc",
+            "POST",
+            &json!({"index":-1,"children":[{"block_type":27,"image":{}}]})
+        ));
+        session
+            .media_nodes
+            .insert("ImageBlock".into(), "docx_image".into());
+        assert!(allowed_request(
+            &session,
+            "/docx/v1/documents/Known/blocks/ImageBlock?document_revision_id=1&client_token=abc",
+            "PATCH",
+            &json!({"replace_image":{"token":"uploaded"}})
+        ));
+        assert!(!allowed_request(
+            &session,
+            "/docx/v1/documents/Known/blocks/ForeignBlock?document_revision_id=1&client_token=abc",
+            "PATCH",
+            &json!({"replace_image":{"token":"uploaded"}})
+        ));
+        assert!(!allowed_request(
+            &session,
+            "/docx/v1/documents/ForeignDocument/blocks/ImageBlock?document_revision_id=1&client_token=abc",
+            "PATCH",
+            &json!({"replace_image":{"token":"uploaded"}})
+        ));
+        assert!(allowed_request(
+            &session,
+            "/drive/v1/medias/upload_all",
+            "POST",
+            &json!({"attachment_id":"image","file_name":"a.png","size":4,"parent_type":"docx_image","parent_node":"ImageBlock"})
+        ));
+        assert!(!allowed_request(
+            &session,
+            "/drive/v1/medias/upload_all",
+            "POST",
+            &json!({"attachment_id":"other","file_name":"a.png","size":4,"parent_type":"docx_image","parent_node":"ImageBlock"})
+        ));
+        assert!(!allowed_request(
+            &session,
+            "/docx/v1/documents/Known/blocks/ImageBlock?document_revision_id=1&client_token=abc",
+            "PATCH",
+            &json!({"replace_file":{"token":"wrong-kind"}})
         ));
     }
 }
