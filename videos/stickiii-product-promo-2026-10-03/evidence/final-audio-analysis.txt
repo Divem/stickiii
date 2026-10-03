@@ -38,7 +38,7 @@ Output #0, null, to 'pipe:':
       encoder         : Lavc62.11.100 pcm_s16le
       handler_name    : SoundHandler
       vendor_id       : [0][0][0][0]
-[Parsed_loudnorm_0 @ 0x8c540b780] 
+[Parsed_loudnorm_0 @ 0x8c540b780]
 {
 	"input_i" : "-16.12",
 	"input_tp" : "-1.17",
@@ -52,4 +52,4 @@ Output #0, null, to 'pipe:':
 	"target_offset" : "-0.37"
 }
 [out#0/null @ 0x8c5408c00] video:609KiB audio:37504KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: unknown
-frame= 1500 fps=1349 q=-0.0 Lsize=N/A time=00:00:50.00 bitrate=N/A speed=  45x elapsed=0:00:01.11    
+frame= 1500 fps=1349 q=-0.0 Lsize=N/A time=00:00:50.00 bitrate=N/A speed=  45x elapsed=0:00:01.11
