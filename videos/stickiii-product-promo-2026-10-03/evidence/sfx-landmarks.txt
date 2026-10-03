@@ -1,0 +1,5 @@
+click.wav                    dur   0.16s  onset  0.001s  peak  0.008s  -19.9 dBFS
+pop.wav                      dur   0.22s  onset  0.001s  peak  0.006s  -15.1 dBFS
+resolve.wav                  dur   1.55s  onset  0.003s  peak  0.232s  -11.5 dBFS
+toggle.wav                   dur   0.25s  onset  0.001s  peak  0.080s  -18.9 dBFS
+typing.wav                   dur   0.65s  onset  0.001s  peak  0.496s  -26.4 dBFS

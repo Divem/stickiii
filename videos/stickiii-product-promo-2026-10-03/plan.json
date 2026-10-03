@@ -1,0 +1,464 @@
+{
+  "demo": false,
+  "product": "Stickiii · 贴贴便签",
+  "style": "repo",
+  "repo": "product-snapshot",
+  "scope": {
+    "versions": "current worktree, v0.1.0 pre-release",
+    "platforms": [
+      "desktop-macos",
+      "desktop-windows"
+    ],
+    "confirmedByUser": true,
+    "exclusions": [
+      "mobile",
+      "web",
+      "cli",
+      "server-api"
+    ],
+    "platformAcceptance": {
+      "macOS": "repository build/isolation evidence; film uses real React components with fixtures",
+      "Windows": "target-platform installation and runtime acceptance pending"
+    }
+  },
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "duration": 50,
+  "audioRequired": true,
+  "sfxRequired": true,
+  "typography": {
+    "mode": "bilingual",
+    "zhFont": "PingFang SC",
+    "enFont": "Avenir Next",
+    "zhStyle": "sans-serif"
+  },
+  "audio": {
+    "ducking": {
+      "enabled": true
+    },
+    "beatGrid": {
+      "bpm": 96,
+      "offset": 0
+    },
+    "music": {
+      "file": "assets/music.wav",
+      "gain": 0.68
+    },
+    "cues": [
+      {
+        "at": 0.799,
+        "actionId": "thought-land",
+        "file": "assets/sfx/pop.wav",
+        "gain": 2.8,
+        "role": "sfx",
+        "kind": "pop",
+        "syncOffset": 0.001
+      },
+      {
+        "at": 4.549,
+        "actionId": "window-open",
+        "file": "assets/sfx/pop.wav",
+        "gain": 2.8,
+        "role": "sfx",
+        "kind": "pop",
+        "syncOffset": 0.001
+      },
+      {
+        "at": 5.549,
+        "actionId": "type-note",
+        "file": "assets/sfx/typing.wav",
+        "gain": 3.5,
+        "role": "sfx",
+        "kind": "typing",
+        "syncOffset": 0.001
+      },
+      {
+        "at": 6.199,
+        "actionId": "type-note-1",
+        "file": "assets/sfx/typing.wav",
+        "gain": 3.5,
+        "role": "sfx",
+        "kind": "typing",
+        "syncOffset": 0.001
+      },
+      {
+        "at": 6.899,
+        "actionId": "type-note-2",
+        "file": "assets/sfx/typing.wav",
+        "gain": 3.5,
+        "role": "sfx",
+        "kind": "typing",
+        "syncOffset": 0.001
+      },
+      {
+        "at": 7.599,
+        "actionId": "type-note-3",
+        "file": "assets/sfx/typing.wav",
+        "gain": 3.5,
+        "role": "sfx",
+        "kind": "typing",
+        "syncOffset": 0.001
+      },
+      {
+        "at": 13.999,
+        "actionId": "preview-toggle",
+        "file": "assets/sfx/toggle.wav",
+        "gain": 3.5,
+        "role": "sfx",
+        "kind": "toggle",
+        "syncOffset": 0.001
+      },
+      {
+        "at": 20.799,
+        "actionId": "second-window",
+        "file": "assets/sfx/pop.wav",
+        "gain": 2.8,
+        "role": "sfx",
+        "kind": "pop",
+        "syncOffset": 0.001
+      },
+      {
+        "at": 21.599,
+        "actionId": "third-window",
+        "file": "assets/sfx/pop.wav",
+        "gain": 2.8,
+        "role": "sfx",
+        "kind": "pop",
+        "syncOffset": 0.001
+      },
+      {
+        "at": 22.999,
+        "actionId": "pin-note",
+        "file": "assets/sfx/click.wav",
+        "gain": 3.5,
+        "role": "sfx",
+        "kind": "click",
+        "syncOffset": 0.001
+      },
+      {
+        "at": 28.549,
+        "actionId": "themes-open",
+        "file": "assets/sfx/click.wav",
+        "gain": 3.5,
+        "role": "sfx",
+        "kind": "click",
+        "syncOffset": 0.001
+      },
+      {
+        "at": 29.649,
+        "actionId": "theme-sage",
+        "file": "assets/sfx/toggle.wav",
+        "gain": 3.5,
+        "role": "sfx",
+        "kind": "toggle",
+        "syncOffset": 0.001
+      },
+      {
+        "at": 30.999,
+        "actionId": "theme-lavender",
+        "file": "assets/sfx/toggle.wav",
+        "gain": 3.5,
+        "role": "sfx",
+        "kind": "toggle",
+        "syncOffset": 0.001
+      },
+      {
+        "at": 33.699,
+        "actionId": "ai-menu",
+        "file": "assets/sfx/click.wav",
+        "gain": 3.5,
+        "role": "sfx",
+        "kind": "click",
+        "syncOffset": 0.001
+      },
+      {
+        "at": 38.649,
+        "actionId": "feishu-config",
+        "file": "assets/sfx/click.wav",
+        "gain": 3.5,
+        "role": "sfx",
+        "kind": "click",
+        "syncOffset": 0.001
+      },
+      {
+        "at": 41.199,
+        "actionId": "feishu-mode",
+        "file": "assets/sfx/toggle.wav",
+        "gain": 3.5,
+        "role": "sfx",
+        "kind": "toggle",
+        "syncOffset": 0.001
+      },
+      {
+        "at": 45.647,
+        "actionId": "brand-land",
+        "file": "assets/sfx/resolve.wav",
+        "gain": 2.8,
+        "role": "sfx",
+        "kind": "resolve",
+        "syncOffset": 0.003
+      }
+    ]
+  },
+  "shots": [
+    {
+      "id": "hook",
+      "start": 0,
+      "end": 4,
+      "type": "title",
+      "headlineEn": "Keep the thought",
+      "headline": "别让灵感，等你忙完。",
+      "description": "灵感来了，先贴下来。",
+      "descriptionAt": 0.25,
+      "plainExplanation": "灵感来了，先贴下来。",
+      "claim": false,
+      "source": [],
+      "component": null,
+      "actions": [
+        {
+          "id": "thought-land",
+          "at": 0.8,
+          "action": "便签贴入画面",
+          "soundRequired": true
+        }
+      ]
+    },
+    {
+      "id": "capture",
+      "start": 4,
+      "end": 12,
+      "type": "detail",
+      "headlineEn": "Catch it now",
+      "headline": "想到，就记。",
+      "description": "快捷键唤起便签，把临时想法先记在本机。",
+      "descriptionAt": 0.25,
+      "plainExplanation": "快捷键唤起便签，把临时想法先记在本机。",
+      "claim": true,
+      "source": [
+        "repo:src-tauri/src/lib.rs",
+        "repo:src/renderer/App.tsx",
+        "repo:src-tauri/src/storage.rs"
+      ],
+      "component": "repo:src/renderer/App.tsx",
+      "actions": [
+        {
+          "id": "window-open",
+          "at": 0.55,
+          "action": "快捷键示意后便签窗口出现",
+          "soundRequired": true
+        },
+        {
+          "id": "type-note",
+          "at": 1.55,
+          "action": "在真实编辑器输入会议记录",
+          "soundRequired": true
+        },
+        {
+          "id": "capture-settle",
+          "at": 6.1,
+          "action": "输入结束并保留记录",
+          "soundRequired": false
+        },
+        {
+          "id": "type-note-1",
+          "at": 2.2,
+          "action": "继续输入会议记录的按键短簇",
+          "soundRequired": true
+        },
+        {
+          "id": "type-note-2",
+          "at": 2.9,
+          "action": "继续输入会议记录的按键短簇",
+          "soundRequired": true
+        },
+        {
+          "id": "type-note-3",
+          "at": 3.6,
+          "action": "继续输入会议记录的按键短簇",
+          "soundRequired": true
+        }
+      ]
+    },
+    {
+      "id": "markdown",
+      "start": 12,
+      "end": 20,
+      "type": "macro",
+      "headlineEn": "Write. Preview.",
+      "headline": "写下来，也看得清。",
+      "description": "写 Markdown，切到预览，标题、待办和列表排好。",
+      "descriptionAt": 0.25,
+      "plainExplanation": "写 Markdown，切到预览，标题、待办和列表排好。",
+      "claim": true,
+      "source": [
+        "repo:src/renderer/NoteEditor.tsx",
+        "repo:src/renderer/MarkdownPreview.tsx"
+      ],
+      "component": "repo:src/renderer/App.tsx",
+      "actions": [
+        {
+          "id": "preview-toggle",
+          "at": 2.0,
+          "action": "点击编辑 / 预览按钮",
+          "soundRequired": true
+        }
+      ]
+    },
+    {
+      "id": "windows",
+      "start": 20,
+      "end": 28,
+      "type": "workspace",
+      "headlineEn": "Give each thought room",
+      "headline": "每个想法，各有位置。",
+      "description": "多张便签独立打开，重要的一张可以置顶。",
+      "descriptionAt": 0.25,
+      "plainExplanation": "多张便签独立打开，重要的一张可以置顶。",
+      "claim": true,
+      "source": [
+        "repo:src/renderer/App.tsx",
+        "repo:src-tauri/src/note_windows.rs"
+      ],
+      "component": "repo:src/renderer/App.tsx",
+      "actions": [
+        {
+          "id": "second-window",
+          "at": 0.8,
+          "action": "第二张独立窗口展开",
+          "soundRequired": true
+        },
+        {
+          "id": "third-window",
+          "at": 1.6,
+          "action": "第三张独立窗口展开",
+          "soundRequired": true
+        },
+        {
+          "id": "pin-note",
+          "at": 3.0,
+          "action": "点击重要便签的置顶按钮",
+          "soundRequired": true
+        }
+      ]
+    },
+    {
+      "id": "themes",
+      "start": 28,
+      "end": 33,
+      "type": "detail",
+      "headlineEn": "A little more you",
+      "headline": "换成喜欢的颜色。",
+      "description": "七种便签主题，每张可以单独设置。",
+      "descriptionAt": 0.25,
+      "plainExplanation": "七种便签主题，每张可以单独设置。",
+      "claim": true,
+      "source": [
+        "repo:src/renderer/App.tsx",
+        "repo:src/renderer/styles.css"
+      ],
+      "component": "repo:src/renderer/App.tsx",
+      "actions": [
+        {
+          "id": "themes-open",
+          "at": 0.55,
+          "action": "点击设置，显示七种主题",
+          "soundRequired": true
+        },
+        {
+          "id": "theme-sage",
+          "at": 1.65,
+          "action": "选择鼠尾草绿",
+          "soundRequired": true
+        },
+        {
+          "id": "theme-lavender",
+          "at": 3.0,
+          "action": "选择淡紫",
+          "soundRequired": true
+        }
+      ]
+    },
+    {
+      "id": "ai",
+      "start": 33,
+      "end": 38,
+      "type": "detail",
+      "headlineEn": "Find the right words",
+      "headline": "让文字，更顺一点。",
+      "description": "润色、翻译、扩写、解释，按需要选择。",
+      "descriptionAt": 0.25,
+      "plainExplanation": "润色、翻译、扩写、解释，按需要选择。",
+      "claim": true,
+      "source": [
+        "repo:src/renderer/App.tsx",
+        "repo:src-tauri/src/ai.rs",
+        "repo:src-tauri/src/lib.rs"
+      ],
+      "component": "repo:src/renderer/App.tsx",
+      "actions": [
+        {
+          "id": "ai-menu",
+          "at": 0.7,
+          "action": "点击真实 AI 下拉菜单，显示四种操作",
+          "soundRequired": true
+        }
+      ]
+    },
+    {
+      "id": "feishu",
+      "start": 38,
+      "end": 45,
+      "type": "detail",
+      "headlineEn": "From note to document",
+      "headline": "准备好，再整理出去。",
+      "description": "配置飞书后，手动同步为新文档或同文档章节。",
+      "descriptionAt": 0.25,
+      "plainExplanation": "配置飞书后，手动同步为新文档或同文档章节。",
+      "claim": true,
+      "source": [
+        "repo:src/renderer/App.tsx",
+        "repo:src/platform/sync/feishu.ts",
+        "repo:src/platform/sync/feishuChapter.ts"
+      ],
+      "component": "repo:src/renderer/App.tsx",
+      "actions": [
+        {
+          "id": "feishu-config",
+          "at": 0.65,
+          "action": "点击飞书按钮，进入未配置的真实表单",
+          "soundRequired": true
+        },
+        {
+          "id": "feishu-mode",
+          "at": 3.2,
+          "action": "切换追加到同一篇文档，显示目标链接字段",
+          "soundRequired": true
+        }
+      ]
+    },
+    {
+      "id": "close",
+      "start": 45,
+      "end": 50,
+      "type": "end",
+      "headlineEn": "Stickiii",
+      "headline": "贴贴便签",
+      "description": "灵感来了，先贴下来。",
+      "descriptionAt": 0.25,
+      "plainExplanation": "灵感来了，先贴下来。",
+      "claim": false,
+      "source": [],
+      "component": null,
+      "actions": [
+        {
+          "id": "brand-land",
+          "at": 0.65,
+          "action": "完整品牌图标和名称落版",
+          "soundRequired": true
+        }
+      ]
+    }
+  ],
+  "sourceRepository": "https://github.com/Divem/stickiii"
+}

@@ -1,0 +1,101 @@
+{
+  "verifiedAt": "2026-10-03T13:38:48.938316+00:00",
+  "platform": "macOS arm64",
+  "source": "current workspace",
+  "checks": {
+    "typecheck": "passed",
+    "contracts": {
+      "passed": 67,
+      "failed": 0
+    },
+    "nativeCheck": "passed",
+    "nativeTests": {
+      "passed": 26,
+      "failed": 0
+    },
+    "productionBuild": "passed",
+    "diffCheck": "passed"
+  },
+  "independentWindows": {
+    "passed": true,
+    "platform": "darwin",
+    "first": {
+      "passed": true,
+      "phase": 1,
+      "result": {
+        "mainWriteBlocked": true,
+        "mainPreview": true,
+        "reused": true,
+        "listEntryLayout": true,
+        "multiple": true,
+        "childAndMainUpdates": true,
+        "deleteFlush": true,
+        "deletedWindow": true,
+        "returnToMain": true,
+        "otherWindowsUnaffected": true,
+        "multiWindowExitCancelled": true,
+        "latestChildDraftSaved": true
+      }
+    },
+    "layouts": {
+      "qa-window-a": {
+        "x": 324,
+        "y": 912,
+        "width": 440,
+        "height": 390,
+        "pinned": true,
+        "open": true
+      },
+      "qa-window-c": {
+        "x": 324,
+        "y": 912,
+        "width": 440,
+        "height": 390,
+        "pinned": false,
+        "open": false
+      },
+      "qa-window-b": {
+        "x": 324,
+        "y": 912,
+        "width": 440,
+        "height": 390,
+        "pinned": false,
+        "open": false
+      }
+    },
+    "second": {
+      "passed": true,
+      "phase": 2,
+      "result": {
+        "restored": true,
+        "savedLatestOnExit": true,
+        "mainRemainsReadOnly": true,
+        "restoredDelete": true
+      }
+    }
+  },
+  "baselineRegression": {
+    "passed": true,
+    "result": {
+      "input": true,
+      "initialFocus": true,
+      "preview": true,
+      "editorPosition": true,
+      "slowSwitch": true,
+      "emptyDraft": true,
+      "cleanNavigation": true,
+      "exitFailureRecovery": true,
+      "pin": true,
+      "attachments": true,
+      "sync": true,
+      "crud": true
+    },
+    "exitContent": "Desktop exit saves the latest draft before the debounce timer"
+  },
+  "boundaries": {
+    "windowsRuntimeVerified": false,
+    "liveAiRequestsVerified": false,
+    "liveFeishuWritesVerified": false,
+    "installerPublished": false
+  }
+}

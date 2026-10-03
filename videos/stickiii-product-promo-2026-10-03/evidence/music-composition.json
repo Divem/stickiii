@@ -1,0 +1,66 @@
+{
+  "source": "code-original",
+  "script": "score.py",
+  "seed": 20261003,
+  "license": "Original score created for this project; no third-party samples",
+  "duration": 50.0,
+  "sampleRate": 48000,
+  "bpm": 96.0,
+  "key": "G major",
+  "instruments": [
+    "soft wooden keyboard",
+    "marimba-like short pluck",
+    "rounded sine bass",
+    "finger taps and light shaker"
+  ],
+  "sections": [
+    {
+      "shot": "hook",
+      "start": 0,
+      "end": 4,
+      "density": 0.65
+    },
+    {
+      "shot": "capture",
+      "start": 4,
+      "end": 12,
+      "density": 0.8
+    },
+    {
+      "shot": "markdown",
+      "start": 12,
+      "end": 20,
+      "density": 0.48
+    },
+    {
+      "shot": "windows",
+      "start": 20,
+      "end": 28,
+      "density": 1
+    },
+    {
+      "shot": "themes",
+      "start": 28,
+      "end": 33,
+      "density": 0.95
+    },
+    {
+      "shot": "ai",
+      "start": 33,
+      "end": 38,
+      "density": 0.52
+    },
+    {
+      "shot": "feishu",
+      "start": 38,
+      "end": 45,
+      "density": 0.5
+    },
+    {
+      "shot": "close",
+      "start": 45,
+      "end": 50,
+      "density": 0.62
+    }
+  ]
+}

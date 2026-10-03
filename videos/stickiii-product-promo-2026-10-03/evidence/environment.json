@@ -1,0 +1,74 @@
+{
+  "ready": true,
+  "cached": false,
+  "engine": "browser",
+  "missing": [],
+  "warnings": [],
+  "fingerprint": "0b40cbdb759449dcf4bb6225e4be5bdd00cfb4f340173441502ee5a3ab0f4210",
+  "details": {
+    "schema": 2,
+    "engine": "browser",
+    "platform": "macOS-26.6.1-arm64-arm-64bit",
+    "versions": {
+      "python": {
+        "path": "/Users/dawinyuan/.hermes/hermes-agent/venv/bin/python3",
+        "version": "3.11.14"
+      },
+      "node": {
+        "path": "/Users/dawinyuan/.nvm/versions/node/v22.23.0/bin/node",
+        "version": "v22.23.0"
+      },
+      "npm": {
+        "path": "/Users/dawinyuan/.nvm/versions/node/v22.23.0/bin/npm",
+        "version": "10.9.8"
+      },
+      "ffmpeg": {
+        "path": "/opt/homebrew/bin/ffmpeg",
+        "version": "ffmpeg version 8.0.1 Copyright (c) 2000-2025 the FFmpeg developers"
+      },
+      "ffprobe": {
+        "path": "/opt/homebrew/bin/ffprobe",
+        "version": "ffprobe version 8.0.1 Copyright (c) 2007-2025 the FFmpeg developers"
+      }
+    },
+    "packages": {
+      "playwright": {
+        "version": "1.58.1",
+        "path": "/Users/dawinyuan/Documents/coder/desktop-tabs/videos/stickiii-product-promo-2026-10-03/node_modules/playwright/package.json"
+      },
+      "esbuild": {
+        "version": "0.27.3",
+        "path": "/Users/dawinyuan/Documents/coder/desktop-tabs/videos/stickiii-product-promo-2026-10-03/node_modules/esbuild/package.json"
+      },
+      "react": {
+        "version": "19.2.3",
+        "path": "/Users/dawinyuan/Documents/coder/desktop-tabs/videos/stickiii-product-promo-2026-10-03/node_modules/react/package.json"
+      },
+      "react-dom": {
+        "version": "19.2.3",
+        "path": "/Users/dawinyuan/Documents/coder/desktop-tabs/videos/stickiii-product-promo-2026-10-03/node_modules/react-dom/package.json"
+      },
+      "gsap": {
+        "version": "3.15.0",
+        "path": "/Users/dawinyuan/Documents/coder/desktop-tabs/videos/stickiii-product-promo-2026-10-03/node_modules/gsap/package.json"
+      },
+      "three": {
+        "version": "0.186.1",
+        "path": "/Users/dawinyuan/Documents/coder/desktop-tabs/videos/stickiii-product-promo-2026-10-03/node_modules/three/package.json"
+      }
+    },
+    "manifests": {
+      "package.json": "9561a9f8fcda1824400bafde09e8e58a1a56da2c0be4ff7016ce516d5136108e",
+      "package-lock.json": "7195932060939d9e2c002de27f5538dc38e51f6d51e5f2950bb3ac857248c867"
+    },
+    "browserEnv": {
+      "PLAYWRIGHT_BROWSERS_PATH": null,
+      "HYPERFRAMES_CHROME_PATH": null
+    }
+  },
+  "browser": {
+    "launched": true,
+    "playwrightVersion": "1.58.1"
+  },
+  "next": "Continue; do not load onboarding."
+}

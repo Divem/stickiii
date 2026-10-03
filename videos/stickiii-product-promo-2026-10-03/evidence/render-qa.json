@@ -1,0 +1,173 @@
+{
+  "ok": true,
+  "checks": [
+    {
+      "t": 7.3,
+      "shot": "capture",
+      "brokenImages": 0,
+      "fields": [
+        "周一例会\n\n先把想法记下来。\n\n- 新版首页：让记录更直接\n- 会后整理反馈\n- 周"
+      ],
+      "preview": "false",
+      "aiMenu": false,
+      "fontZh": true,
+      "fontEn": true
+    },
+    {
+      "t": 10.5,
+      "shot": "capture",
+      "brokenImages": 0,
+      "fields": [
+        "周一例会\n\n先把想法记下来。\n\n- 新版首页：让记录更直接\n- 会后整理反馈\n- 周五确认下一步"
+      ],
+      "preview": "false",
+      "aiMenu": false,
+      "fontZh": true,
+      "fontEn": true
+    },
+    {
+      "t": 16,
+      "shot": "markdown",
+      "brokenImages": 0,
+      "fields": [
+        "# 周一例会\n\n先记下来，再慢慢整理。\n\n## 接下来\n- [x] 记下今天的想法\n- [ ] 整理会上提到的反馈\n- [ ] 周五确认下一步\n\n> 好想法，不用等。"
+      ],
+      "preview": "true",
+      "aiMenu": false,
+      "fontZh": true,
+      "fontEn": true
+    },
+    {
+      "t": 24.5,
+      "shot": "windows",
+      "brokenImages": 0,
+      "fields": [
+        "灵感备忘\n\n把首页做得更简单。\n\n让「记下来」成为第一步。",
+        "今天要做\n\n☑ 看完访谈记录\n☐ 整理两条关键反馈\n☐ 写下一个新想法",
+        "会议片段\n\n用户最在意的是：\n\n随时能记，不打断手头的事。"
+      ],
+      "preview": "false",
+      "pin": "true",
+      "aiMenu": false,
+      "fontZh": true,
+      "fontEn": true
+    },
+    {
+      "t": 29.8,
+      "shot": "themes",
+      "brokenImages": 0,
+      "fields": [
+        "一个小想法\n\n颜色，也可以有自己的偏好。\n\n把重要的事，留在手边。"
+      ],
+      "preview": "false",
+      "theme": "鼠尾草绿",
+      "aiMenu": false,
+      "fontZh": true,
+      "fontEn": true
+    },
+    {
+      "t": 31.7,
+      "shot": "themes",
+      "brokenImages": 0,
+      "fields": [
+        "一个小想法\n\n颜色，也可以有自己的偏好。\n\n把重要的事，留在手边。"
+      ],
+      "preview": "false",
+      "theme": "淡紫色",
+      "aiMenu": false,
+      "fontZh": true,
+      "fontEn": true
+    },
+    {
+      "t": 35.5,
+      "shot": "ai",
+      "brokenImages": 0,
+      "fields": [
+        "会后备忘\n\n今天讨论了首页和反馈，\n周五再确认下一步。"
+      ],
+      "preview": "false",
+      "aiMenu": true,
+      "fontZh": true,
+      "fontEn": true
+    },
+    {
+      "t": 39.5,
+      "shot": "feishu",
+      "brokenImages": 0,
+      "fields": [
+        "# 本周的想法\n\n准备整理到飞书。\n\n- 首页入口再直接一点\n- 反馈集中到每周复盘\n- 先记录，再一起讨论"
+      ],
+      "preview": "false",
+      "mode": "create",
+      "aiMenu": false,
+      "fontZh": true,
+      "fontEn": true
+    },
+    {
+      "t": 42.5,
+      "shot": "feishu",
+      "brokenImages": 0,
+      "fields": [
+        "# 本周的想法\n\n准备整理到飞书。\n\n- 首页入口再直接一点\n- 反馈集中到每周复盘\n- 先记录，再一起讨论"
+      ],
+      "preview": "false",
+      "mode": "append",
+      "aiMenu": false,
+      "fontZh": true,
+      "fontEn": true
+    },
+    {
+      "t": 49.8,
+      "shot": "close",
+      "brokenImages": 0,
+      "fields": [],
+      "aiMenu": false,
+      "fontZh": true,
+      "fontEn": true
+    }
+  ],
+  "seekComparisons": [
+    {
+      "time": 10.5,
+      "equalPixels": true,
+      "equalState": true,
+      "freshSha256": "42f7e3ff85f0c8f84e86152e3167458b051d6320b388bec3a9ba7bbb9acc3364",
+      "afterHistorySha256": "42f7e3ff85f0c8f84e86152e3167458b051d6320b388bec3a9ba7bbb9acc3364"
+    },
+    {
+      "time": 16,
+      "equalPixels": true,
+      "equalState": true,
+      "freshSha256": "52c2e3869f3f584bef9bee8d08a5c841dfdd4f053d4409715f785fc1c6d4e15a",
+      "afterHistorySha256": "52c2e3869f3f584bef9bee8d08a5c841dfdd4f053d4409715f785fc1c6d4e15a"
+    },
+    {
+      "time": 24.5,
+      "equalPixels": true,
+      "equalState": true,
+      "freshSha256": "a443590a5fda86d11cf18c7bf23194cf5feacabffcd596933ab8e4a26a4e17ba",
+      "afterHistorySha256": "a443590a5fda86d11cf18c7bf23194cf5feacabffcd596933ab8e4a26a4e17ba"
+    },
+    {
+      "time": 31.7,
+      "equalPixels": true,
+      "equalState": true,
+      "freshSha256": "6764bb534dad3f2de37147caebc6e8562f5381d3b882e5043e2ed57a31220748",
+      "afterHistorySha256": "6764bb534dad3f2de37147caebc6e8562f5381d3b882e5043e2ed57a31220748"
+    },
+    {
+      "time": 42.5,
+      "equalPixels": true,
+      "equalState": true,
+      "freshSha256": "92bb5d9d982e95d711a9ce3ce9904a01f71d72fa136541c990e245632de31551",
+      "afterHistorySha256": "92bb5d9d982e95d711a9ce3ce9904a01f71d72fa136541c990e245632de31551"
+    }
+  ],
+  "failures": [],
+  "externalRequests": [],
+  "limits": [
+    "UI fixture checks do not establish native macOS/Windows runtime acceptance",
+    "No AI model or Feishu remote calls",
+    "No audio listening"
+  ]
+}

@@ -1,0 +1,95 @@
+{
+  "status": "completed visual and technical review; audio listening outstanding",
+  "video": "renders/stickiii-product-promo-1080p.mp4",
+  "videoSha256": "5f0a5c4ef2cc45a8e2203c8ee1b8d9f24f95ef2c0959f1d6bc09d57808e019d4",
+  "planSha256": "0ac02c2480f67cdd5d08ddd49a81a19e8519457dd71dee029475e58f68f0b184",
+  "masterSha256": "e44b3de0c068d93f0755d169af799301daf455de63cda2511a5557d40897bfdd",
+  "spec": {
+    "duration": 50.0,
+    "width": 1920,
+    "height": 1080,
+    "fps": "30/1",
+    "frames": "1500",
+    "codec": "h264",
+    "pixelFormat": "yuv420p",
+    "colorSpace": "bt709",
+    "colorRange": "tv",
+    "audioCodec": "aac",
+    "audioSampleRate": "48000"
+  },
+  "actualVisualReview": {
+    "fullMovieContactSheets": [
+      "contact-sheet-01.png",
+      "contact-sheet-02.png"
+    ],
+    "sampling": "2 fps across all 50 seconds",
+    "allTransitions": "10 fps strips at 4,12,20,28,33,38,45 seconds; transitions-contact.png viewed",
+    "fullSizeFrames": [
+      "final-markdown.png",
+      "final-windows.png",
+      "final-feishu.png",
+      "final-last.png"
+    ],
+    "covers": "all three ratios viewed at 320 px width; matching paper/sage design and readable headline"
+  },
+  "automaticChecks": {
+    "delivery": true,
+    "uiStateCases": 10,
+    "seekPixelComparisons": 5,
+    "pageErrors": [],
+    "externalRequests": [],
+    "audioCues": 17,
+    "cueTimingErrorsFrames": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      -0.0,
+      0.0,
+      -0.0,
+      0.0
+    ]
+  },
+  "encodedAudioMeasurements": {
+    "integratedLufs": -16.12,
+    "truePeakDbTP": -1.17,
+    "lraLu": 6.6
+  },
+  "pacingHintReview": "The 7.17-second low-difference interval is the deliberate small-area typing proof and reading hold at 5–12 seconds. Actual text changes and closing camera movement were inspected; no artificial movement added to optimize the hint.",
+  "audioListening": "not performed; current agent environment cannot audition audio",
+  "scope": {
+    "platforms": [
+      "macOS desktop",
+      "Windows desktop"
+    ],
+    "notCovered": [
+      "mobile",
+      "web",
+      "CLI",
+      "server API"
+    ],
+    "acceptanceLimits": [
+      "fixture-rendered UI is not native OS runtime footage",
+      "no real AI model request",
+      "no real Feishu tenant write",
+      "Windows installation/runtime still pending"
+    ]
+  },
+  "browserPlayback": {
+    "duration": 50,
+    "decodedFrames": 1500,
+    "droppedFrames": 0,
+    "error": null,
+    "audition": "muted validation only; not listening",
+    "result": "movie paused at start, unmuted for user playback"
+  }
+}

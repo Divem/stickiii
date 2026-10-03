@@ -1,0 +1,105 @@
+{
+  "music": {
+    "source": "code-original",
+    "script": "score.py",
+    "seed": 20261003,
+    "license": "Original score created for this project; no third-party samples",
+    "duration": 50.0,
+    "sampleRate": 48000,
+    "bpm": 96.0,
+    "key": "G major",
+    "instruments": [
+      "soft wooden keyboard",
+      "marimba-like short pluck",
+      "rounded sine bass",
+      "finger taps and light shaker"
+    ],
+    "sections": [
+      {
+        "shot": "hook",
+        "start": 0,
+        "end": 4,
+        "density": 0.65
+      },
+      {
+        "shot": "capture",
+        "start": 4,
+        "end": 12,
+        "density": 0.8
+      },
+      {
+        "shot": "markdown",
+        "start": 12,
+        "end": 20,
+        "density": 0.48
+      },
+      {
+        "shot": "windows",
+        "start": 20,
+        "end": 28,
+        "density": 1
+      },
+      {
+        "shot": "themes",
+        "start": 28,
+        "end": 33,
+        "density": 0.95
+      },
+      {
+        "shot": "ai",
+        "start": 33,
+        "end": 38,
+        "density": 0.52
+      },
+      {
+        "shot": "feishu",
+        "start": 38,
+        "end": 45,
+        "density": 0.5
+      },
+      {
+        "shot": "close",
+        "start": 45,
+        "end": 50,
+        "density": 0.62
+      }
+    ]
+  },
+  "sfx": [
+    {
+      "file": "assets/sfx/click.wav",
+      "source": "guizang-product-video-skill original synthesized WAV",
+      "license": "skill AGPL-3.0; see assets/sfx/SOURCE.md and LICENSE",
+      "fallbackReason": "No user-provided recordings or installed recording library found in available local skill stores; use the five missing UI/typing/brand roles from the built-in original library",
+      "sha256": "8cb3444a4ab4640a7417dcb539a556bd10c697b19869c17c3d4289a4c1eebc13"
+    },
+    {
+      "file": "assets/sfx/pop.wav",
+      "source": "guizang-product-video-skill original synthesized WAV",
+      "license": "skill AGPL-3.0; see assets/sfx/SOURCE.md and LICENSE",
+      "fallbackReason": "No user-provided recordings or installed recording library found in available local skill stores; use the five missing UI/typing/brand roles from the built-in original library",
+      "sha256": "ea11b896eb402c995a63f01ff298f0def88deed0ce96d37eb5f52d266b654dc9"
+    },
+    {
+      "file": "assets/sfx/toggle.wav",
+      "source": "guizang-product-video-skill original synthesized WAV",
+      "license": "skill AGPL-3.0; see assets/sfx/SOURCE.md and LICENSE",
+      "fallbackReason": "No user-provided recordings or installed recording library found in available local skill stores; use the five missing UI/typing/brand roles from the built-in original library",
+      "sha256": "509be1af88150e4acf3c273ae29ab404027876fb61d705de5f21d7a62b99d6b6"
+    },
+    {
+      "file": "assets/sfx/typing.wav",
+      "source": "guizang-product-video-skill original synthesized WAV",
+      "license": "skill AGPL-3.0; see assets/sfx/SOURCE.md and LICENSE",
+      "fallbackReason": "No user-provided recordings or installed recording library found in available local skill stores; use the five missing UI/typing/brand roles from the built-in original library",
+      "sha256": "e0494ffecdd4a637ac582cbf7407fcbdea62320a5c67d1106c9e12e77324e9d1"
+    },
+    {
+      "file": "assets/sfx/resolve.wav",
+      "source": "guizang-product-video-skill original synthesized WAV",
+      "license": "skill AGPL-3.0; see assets/sfx/SOURCE.md and LICENSE",
+      "fallbackReason": "No user-provided recordings or installed recording library found in available local skill stores; use the five missing UI/typing/brand roles from the built-in original library",
+      "sha256": "10986e5676fd4a404c27463066253a7f0dd1176bdf2e33551430370394e11116"
+    }
+  ]
+}

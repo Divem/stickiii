@@ -20,6 +20,7 @@ declare global {
       saveNote(note: Note): Promise<Note>;
       deleteNote(noteId: string): Promise<void>;
       pickFiles(): Promise<PickedAttachment[]>;
+      importAttachment(noteId: string, file: File, imageOnly: boolean): Promise<PickedAttachment>;
       openAttachment(storedPath: string): Promise<string>;
       syncNote(note: Note, provider: SyncProviderId, options?: SyncOptions): Promise<SyncResult>;
       openExternalLink(url: string): Promise<boolean>;

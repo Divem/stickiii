@@ -1,0 +1,22 @@
+{
+  "fonts": {
+    "chinese": {
+      "font": "PingFang SC",
+      "documentFontsCheck": true,
+      "renderedHeading": "PingFang SC, sans-serif",
+      "source": "macOS system font; not redistributed"
+    },
+    "english": {
+      "font": "Avenir Next",
+      "documentFontsCheck": true,
+      "renderedHeading": "Avenir Next, sans-serif",
+      "source": "macOS system font; not redistributed"
+    }
+  },
+  "renderEnvironment": {
+    "node": "v22.23.0",
+    "python": "Python 3.11.14",
+    "ffmpeg": "ffmpeg version 8.0.1 Copyright (c) 2000-2025 the FFmpeg developers"
+  },
+  "evidence": "ego-browser runtime inspection at feishu shot 42.5s; image decode check has no broken images"
+}

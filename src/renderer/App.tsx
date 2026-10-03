@@ -39,6 +39,7 @@ import { hasNoteContent, NoteSaveQueue } from "./noteSaveQueue.js";
 import { readyWindow, startDragging } from "./desktop.js";
 import { randomUUID } from "../shared/id.js";
 import type { NoteWindowContext } from "../shared/types.js";
+import { appendAttachments, importAttachmentBatch } from "./attachmentImport.js";
 
 const providerLabels: Record<SyncProviderId, string> = { notion: "Notion", feishu: "飞书" };
 const shortcutLabelKeys: Record<ShortcutActionId, MessageKey> = {
@@ -127,6 +128,7 @@ export default function App({ context }: { context: NoteWindowContext }) {
   const { locale, themeOpacity } = preferences;
   const [notes, setNotes] = useState<Note[]>([]);
   const [draft, setDraft] = useState<Note | null>(null);
+  const isDelegated = !isSingleNote && !!draft && openNoteIds.includes(draft.id);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
   const [toast, setToast] = useState<string | null>(null);
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
@@ -237,6 +239,22 @@ export default function App({ context }: { context: NoteWindowContext }) {
       window.removeEventListener("blur", handleBlur);
     };
   }, []);
+
+  useEffect(() => {
+    // A file released outside the editor must never navigate the WebView.
+    const preventFileNavigation = (event: DragEvent): void => {
+      if (!event.dataTransfer?.types.includes("Files")) return;
+      if (!event.defaultPrevented && event.type === "drop") setToast(t("dropOnNote", locale));
+      if (!event.defaultPrevented && event.type === "dragover") event.dataTransfer.dropEffect = "none";
+      event.preventDefault();
+    };
+    window.addEventListener("dragover", preventFileNavigation);
+    window.addEventListener("drop", preventFileNavigation);
+    return () => {
+      window.removeEventListener("dragover", preventFileNavigation);
+      window.removeEventListener("drop", preventFileNavigation);
+    };
+  }, [locale]);
 
   useEffect(() => {
     // Keep settings drafts open when switching apps to copy links or credentials.
@@ -473,7 +491,7 @@ export default function App({ context }: { context: NoteWindowContext }) {
 
   async function handleDelete(): Promise<void> {
     const current = draftRef.current;
-    if (isSingleNote || !current || navigationLock.current || exitLock.current || !window.confirm(t("deleteConfirm", locale))) return;
+    if (isSingleNote || !current || navigationLock.current || pickingLock.current || exitLock.current || !window.confirm(t("deleteConfirm", locale))) return;
     navigationLock.current = true;
     setIsNavigating(true);
     cancelAutosave();
@@ -494,25 +512,44 @@ export default function App({ context }: { context: NoteWindowContext }) {
     finally { navigationLock.current = false; setIsNavigating(false); }
   }
 
-  async function handlePickFiles(): Promise<void> {
+  async function handleAttachments(load: (noteId: string) => Promise<{ attachments: NoteAttachment[]; failures?: number; error?: string }>): Promise<void> {
     const noteId = draftRef.current?.id;
-    if (!noteId || pickingLock.current || exitLock.current || (!isSingleNote && openNoteIdsRef.current.includes(noteId))) return;
+    if (!noteId || pickingLock.current || navigationLock.current || transferLock.current || closeLock.current || exitLock.current || (!isSingleNote && openNoteIdsRef.current.includes(noteId))) {
+      setToast(t("attachmentImportUnavailable", locale)); return;
+    }
     pickingLock.current = true;
     setPickingFiles(true);
     let finishImport!: () => void;
     importIdle.current = new Promise<void>((resolve) => { finishImport = resolve; });
     try {
-      const picked = await window.desktopTabs.pickFiles();
-      const current = saveQueue.read(noteId);
-      if (current && picked.length) {
-        const next = { ...current, attachments: [...current.attachments, ...picked], updatedAt: new Date().toISOString() };
+      const result = await load(noteId);
+      const next = appendAttachments(saveQueue.read(noteId), result.attachments);
+      if (next && result.attachments.length) {
         saveQueue.track(next);
         if (draftRef.current?.id === noteId) replaceDraft(next);
-        else { setNotes((items) => items.map((item) => item.id === noteId ? next : item)); void saveNoteId(noteId, false); }
+        setNotes((items) => items.map((item) => item.id === noteId ? next : item));
+        if (!await saveNoteId(noteId)) return;
+      }
+      if (result.failures) {
+        const key = result.error === "ATTACHMENT_TOO_LARGE" ? "attachmentTooLarge"
+          : result.error === "ATTACHMENT_TOO_MANY" ? "attachmentTooMany"
+          : result.error === "UNSUPPORTED_CLIPBOARD_IMAGE" ? "unsupportedClipboardImage" : "importFilesFailed";
+        setToast(result.attachments.length ? t("attachmentPartialImport", locale).replace("{count}", String(result.failures)) : t(key, locale));
+      } else if (result.attachments.length) {
+        setToast(t("attachmentsAdded", locale).replace("{count}", String(result.attachments.length)));
       }
       closeMenus();
     } catch { setToast(t("importFilesFailed", locale)); }
     finally { pickingLock.current = false; setPickingFiles(false); finishImport(); }
+  }
+
+  async function handlePickFiles(): Promise<void> {
+    await handleAttachments(async () => ({ attachments: await window.desktopTabs.pickFiles() }));
+  }
+
+  async function handleImportFiles(files: File[], imageOnly: boolean): Promise<void> {
+    await handleAttachments((noteId) => importAttachmentBatch(files,
+      (file) => window.desktopTabs.importAttachment(noteId, file, imageOnly)));
   }
 
   async function handleOpenAttachment(attachment: NoteAttachment): Promise<void> {
@@ -778,21 +815,21 @@ export default function App({ context }: { context: NoteWindowContext }) {
     if (!draft) return;
     const view = editorViews.current.get(draft.id);
     const editor = noteEditorRef.current;
-    if (editorMode === "edit" && editor) {
+    if (editorMode === "edit" && !isDelegated && editor) {
       if (view) { editor.setSelectionRange(view.start, view.end); editor.scrollTop = view.scroll; }
       editor.focus({ preventScroll: true });
     } else if (previewRef.current) {
       previewRef.current.scrollTop = view?.previewScroll ?? 0;
       previewRef.current.focus({ preventScroll: true });
     }
-  }, [draft?.id, editorMode]);
+  }, [draft?.id, editorMode, isDelegated]);
 
   const shortcutHandler = useRef<(action: ShortcutActionId) => void>(() => {});
   shortcutHandler.current = (action) => {
     if (recordingShortcut || exitLock.current) return;
     if (action === "toggleWindow") {
       if (openMenu === "settings") return;
-      if (editorMode === "preview") previewRef.current?.focus({ preventScroll: true });
+      if (editorMode === "preview" || isDelegated) previewRef.current?.focus({ preventScroll: true });
       else noteEditorRef.current?.focus({ preventScroll: true });
     }
     if (action === "newNote") void handleNewNote();
@@ -847,7 +884,10 @@ export default function App({ context }: { context: NoteWindowContext }) {
     });
     const disposeActivate = window.desktopTabs.onNoteActivated((id) => {
       const note = saveQueue.read(id);
-      if (note) void selectHandler.current(note);
+      if (note) void (async () => {
+        await selectHandler.current(note);
+        if (draftRef.current?.id === id) focusEditor();
+      })();
     });
     const disposeSettings = window.desktopTabs.onSettingsRequested(() => setOpenMenu("settings"));
     const disposeRestore = window.desktopTabs.onRestoreFailed(() => setToast(t("noteWindowRestoreFailed", locale)));
@@ -946,7 +986,6 @@ export default function App({ context }: { context: NoteWindowContext }) {
   const activeAiMeta = aiOperationMeta[activeAiOperation];
   const remoteDocumentUrl = activeSyncFeedback?.url ?? draft?.feishu?.url;
   const activeNoteIndex = notes.findIndex((note) => note.id === draft?.id);
-  const isDelegated = !isSingleNote && !!draft && openNoteIds.includes(draft.id);
   const previousNote = activeNoteIndex >= 0 && notes.length > 1 ? notes[(activeNoteIndex - 1 + notes.length) % notes.length] : undefined;
   const nextNote = activeNoteIndex >= 0 && notes.length > 1 ? notes[(activeNoteIndex + 1) % notes.length] : undefined;
 
@@ -984,6 +1023,9 @@ export default function App({ context }: { context: NoteWindowContext }) {
           onPrevious={() => selectRelativeNote(-1)} onNext={() => selectRelativeNote(1)} onShowNotes={() => toggleMenu("notes")}>
         <div className="note-editor">
           {draft ? <NoteEditor note={draft} preview={editorMode === "preview" || isDelegated} readOnly={exiting || transferring || isDelegated}
+            importDisabled={isNavigating || openMenu === "settings"}
+            importing={pickingFiles} onImportFiles={(files, imageOnly) => void handleImportFiles(files, imageOnly)}
+            onImportRejected={(directory) => setToast(t(directory ? "attachmentDirectoryUnsupported" : "attachmentImportUnavailable", locale))}
             locale={locale} editorRef={noteEditorRef} previewRef={previewRef} onChange={(content) => updateDraft({ content })}
             onOpenLink={(url) => void openLink(url)} onOpenAttachment={(attachment) => void handleOpenAttachment(attachment)}
             onRemoveAttachment={(id) => updateDraft({ attachments: draftRef.current!.attachments.filter((item) => item.id !== id) })} /> : <div className="empty-note"><Sparkles size={21} /><span>{t(!loaded ? loadError ? "loadFailed" : "loadingNotes" : "emptyTitle", locale)}</span>
@@ -1044,7 +1086,7 @@ export default function App({ context }: { context: NoteWindowContext }) {
           {isSingleNote ? <button disabled={exiting || transferring} onClick={() => void closeSingleNote(true)}><CornerUpLeft size={14} />{t("returnToMain", locale)}</button> : <>
             <button disabled={!draft || !hasNoteContent(draft) || exiting || transferring} onClick={() => draft && void handleOpenNoteWindow(draft.id)}><PanelTop size={14} />{t(isDelegated ? "focusNoteWindow" : "openNoteWindow", locale)}</button>
             <button disabled={!loaded || isNavigating || exiting || transferring} onClick={() => void handleNewNote()}><CirclePlus size={14} />{t("newNote", locale)}</button>
-            <button disabled={!draft || isNavigating || exiting || transferring} onClick={() => void handleDelete()}><Trash2 size={14} />{t("deleteNote", locale)}</button>
+            <button disabled={!draft || isNavigating || pickingFiles || exiting || transferring} onClick={() => void handleDelete()}><Trash2 size={14} />{t("deleteNote", locale)}</button>
           </>}
           <button className="compact-minimize" onClick={() => void hideWindow(true)}><Minus size={14} />{t("minimize", locale)}</button>
           {!isSingleNote && <button disabled={exiting || transferring} onClick={() => { closeMenus(); void window.desktopTabs.quitApplication().catch(() => setToast(t("windowActionFailed", locale))); }}><LogOut size={14} />{t("quitApplication", locale)}</button>}

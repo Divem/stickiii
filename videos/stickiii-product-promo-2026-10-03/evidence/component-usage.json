@@ -1,0 +1,158 @@
+[
+  {
+    "shotId": "capture",
+    "featureEntry": "src/renderer/App.tsx",
+    "components": [
+      "App.tsx",
+      "NoteEditor.tsx",
+      "NoteBook.tsx",
+      "MarkdownPreview.tsx"
+    ],
+    "styleEntries": [
+      "src/renderer/styles.css"
+    ],
+    "stateDriver": "src/shots/product-film.jsx onDrive: native input/change events and real button clicks",
+    "adapters": [
+      "src/adapters/desktop.js",
+      "src/fixtures/desktop.js"
+    ],
+    "reuseMode": "unmodified snapshot of actual product source, full App mounted",
+    "exceptions": [
+      "native desktop bridge replaced by offline in-memory fixture",
+      "original theme variables scoped to each film window",
+      "viewport height adapted to the film container",
+      "hover toolbar kept visible for demonstration",
+      "autosave timer driven by film state; not native storage verification"
+    ]
+  },
+  {
+    "shotId": "markdown",
+    "featureEntry": "src/renderer/App.tsx",
+    "components": [
+      "App.tsx",
+      "NoteEditor.tsx",
+      "NoteBook.tsx",
+      "MarkdownPreview.tsx"
+    ],
+    "styleEntries": [
+      "src/renderer/styles.css"
+    ],
+    "stateDriver": "src/shots/product-film.jsx onDrive: native input/change events and real button clicks",
+    "adapters": [
+      "src/adapters/desktop.js",
+      "src/fixtures/desktop.js"
+    ],
+    "reuseMode": "unmodified snapshot of actual product source, full App mounted",
+    "exceptions": [
+      "native desktop bridge replaced by offline in-memory fixture",
+      "original theme variables scoped to each film window",
+      "viewport height adapted to the film container",
+      "hover toolbar kept visible for demonstration",
+      "autosave timer driven by film state; not native storage verification"
+    ]
+  },
+  {
+    "shotId": "windows",
+    "featureEntry": "src/renderer/App.tsx",
+    "components": [
+      "App.tsx",
+      "NoteEditor.tsx",
+      "NoteBook.tsx",
+      "MarkdownPreview.tsx"
+    ],
+    "styleEntries": [
+      "src/renderer/styles.css"
+    ],
+    "stateDriver": "src/shots/product-film.jsx onDrive: native input/change events and real button clicks",
+    "adapters": [
+      "src/adapters/desktop.js",
+      "src/fixtures/desktop.js"
+    ],
+    "reuseMode": "unmodified snapshot of actual product source, full App mounted",
+    "exceptions": [
+      "native desktop bridge replaced by offline in-memory fixture",
+      "original theme variables scoped to each film window",
+      "viewport height adapted to the film container",
+      "hover toolbar kept visible for demonstration",
+      "autosave timer driven by film state; not native storage verification"
+    ]
+  },
+  {
+    "shotId": "themes",
+    "featureEntry": "src/renderer/App.tsx",
+    "components": [
+      "App.tsx",
+      "NoteEditor.tsx",
+      "NoteBook.tsx",
+      "MarkdownPreview.tsx"
+    ],
+    "styleEntries": [
+      "src/renderer/styles.css"
+    ],
+    "stateDriver": "src/shots/product-film.jsx onDrive: native input/change events and real button clicks",
+    "adapters": [
+      "src/adapters/desktop.js",
+      "src/fixtures/desktop.js"
+    ],
+    "reuseMode": "unmodified snapshot of actual product source, full App mounted",
+    "exceptions": [
+      "native desktop bridge replaced by offline in-memory fixture",
+      "original theme variables scoped to each film window",
+      "viewport height adapted to the film container",
+      "hover toolbar kept visible for demonstration",
+      "autosave timer driven by film state; not native storage verification"
+    ]
+  },
+  {
+    "shotId": "ai",
+    "featureEntry": "src/renderer/App.tsx",
+    "components": [
+      "App.tsx",
+      "NoteEditor.tsx",
+      "NoteBook.tsx",
+      "MarkdownPreview.tsx"
+    ],
+    "styleEntries": [
+      "src/renderer/styles.css"
+    ],
+    "stateDriver": "src/shots/product-film.jsx onDrive: native input/change events and real button clicks",
+    "adapters": [
+      "src/adapters/desktop.js",
+      "src/fixtures/desktop.js"
+    ],
+    "reuseMode": "unmodified snapshot of actual product source, full App mounted",
+    "exceptions": [
+      "native desktop bridge replaced by offline in-memory fixture",
+      "original theme variables scoped to each film window",
+      "viewport height adapted to the film container",
+      "hover toolbar kept visible for demonstration",
+      "autosave timer driven by film state; not native storage verification"
+    ]
+  },
+  {
+    "shotId": "feishu",
+    "featureEntry": "src/renderer/App.tsx",
+    "components": [
+      "App.tsx",
+      "NoteEditor.tsx",
+      "NoteBook.tsx",
+      "MarkdownPreview.tsx"
+    ],
+    "styleEntries": [
+      "src/renderer/styles.css"
+    ],
+    "stateDriver": "src/shots/product-film.jsx onDrive: native input/change events and real button clicks",
+    "adapters": [
+      "src/adapters/desktop.js",
+      "src/fixtures/desktop.js"
+    ],
+    "reuseMode": "unmodified snapshot of actual product source, full App mounted",
+    "exceptions": [
+      "native desktop bridge replaced by offline in-memory fixture",
+      "original theme variables scoped to each film window",
+      "viewport height adapted to the film container",
+      "hover toolbar kept visible for demonstration",
+      "autosave timer driven by film state; not native storage verification"
+    ]
+  }
+]

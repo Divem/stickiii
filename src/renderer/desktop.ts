@@ -4,6 +4,25 @@ import { createFeishuAdapter } from "../platform/sync/feishu.js";
 import { FeishuApi, FeishuError } from "../platform/sync/feishuApi.js";
 import type { StoredConfig } from "../platform/sync/configStore.js";
 import type { Note, ShortcutActionId, SyncOptions, SyncProviderConfig, SyncProviderId, SyncResult } from "../shared/types.js";
+import { MAX_ATTACHMENT_BYTES } from "./attachmentImport.js";
+
+async function importAttachment(noteId: string, file: File, imageOnly: boolean) {
+  if (file.size > MAX_ATTACHMENT_BYTES) throw "ATTACHMENT_TOO_LARGE";
+  const dataBase64 = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject("ATTACHMENT_READ_FAILED");
+    reader.onabort = () => reject("ATTACHMENT_READ_FAILED");
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== "string" || !result.includes(",")) reject("ATTACHMENT_READ_FAILED");
+      else resolve(result.slice(result.indexOf(",") + 1));
+    };
+    reader.readAsDataURL(file);
+  });
+  return invoke<Note["attachments"][number]>("import_attachment", {
+    noteId, name: file.name, dataBase64, imageOnly,
+  });
+}
 
 type Started = { status: "ready"; jobId: string; note: Note; config: SyncProviderConfig } | { status: "result"; result: SyncResult };
 
@@ -77,6 +96,7 @@ export const desktopTabs: Window["desktopTabs"] = {
   saveNote: (note) => invoke("save_note", { note }),
   deleteNote: (noteId) => invoke("delete_note", { noteId }),
   pickFiles: () => invoke("pick_files"),
+  importAttachment,
   openAttachment: (storedPath) => invoke("open_attachment", { storedPath }),
   openExternalLink: (url) => invoke("open_external_link", { url }),
   syncNote,

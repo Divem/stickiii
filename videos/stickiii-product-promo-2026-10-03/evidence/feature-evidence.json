@@ -1,0 +1,87 @@
+{
+  "head": "17db6fb09a3671f22fa737289d932c0644f88473",
+  "basis": "current dirty worktree; existing changes preserved",
+  "features": [
+    {
+      "feature": "capture",
+      "benefit": "快捷键唤起便签，把临时想法先记在本机。",
+      "status": "current worktree implementation, pre-release",
+      "release": "0.1.0",
+      "source": [
+        "repo:src-tauri/src/lib.rs",
+        "repo:src/renderer/App.tsx",
+        "repo:src-tauri/src/storage.rs"
+      ],
+      "component": "repo:src/renderer/App.tsx",
+      "demoState": "fixed synthetic notes and offline desktop bridge fixtures",
+      "limits": "not a native OS acceptance or remote tenant/model execution"
+    },
+    {
+      "feature": "markdown",
+      "benefit": "写 Markdown，切到预览，标题、待办和列表排好。",
+      "status": "current worktree implementation, pre-release",
+      "release": "0.1.0",
+      "source": [
+        "repo:src/renderer/NoteEditor.tsx",
+        "repo:src/renderer/MarkdownPreview.tsx"
+      ],
+      "component": "repo:src/renderer/App.tsx",
+      "demoState": "fixed synthetic notes and offline desktop bridge fixtures",
+      "limits": "not a native OS acceptance or remote tenant/model execution"
+    },
+    {
+      "feature": "windows",
+      "benefit": "多张便签独立打开，重要的一张可以置顶。",
+      "status": "current worktree implementation, pre-release",
+      "release": "0.1.0",
+      "source": [
+        "repo:src/renderer/App.tsx",
+        "repo:src-tauri/src/note_windows.rs"
+      ],
+      "component": "repo:src/renderer/App.tsx",
+      "demoState": "fixed synthetic notes and offline desktop bridge fixtures",
+      "limits": "not a native OS acceptance or remote tenant/model execution"
+    },
+    {
+      "feature": "themes",
+      "benefit": "七种便签主题，每张可以单独设置。",
+      "status": "current worktree implementation, pre-release",
+      "release": "0.1.0",
+      "source": [
+        "repo:src/renderer/App.tsx",
+        "repo:src/renderer/styles.css"
+      ],
+      "component": "repo:src/renderer/App.tsx",
+      "demoState": "fixed synthetic notes and offline desktop bridge fixtures",
+      "limits": "not a native OS acceptance or remote tenant/model execution"
+    },
+    {
+      "feature": "ai",
+      "benefit": "润色、翻译、扩写、解释，按需要选择。",
+      "status": "current worktree implementation, pre-release",
+      "release": "0.1.0",
+      "source": [
+        "repo:src/renderer/App.tsx",
+        "repo:src-tauri/src/ai.rs",
+        "repo:src-tauri/src/lib.rs"
+      ],
+      "component": "repo:src/renderer/App.tsx",
+      "demoState": "fixed synthetic notes and offline desktop bridge fixtures",
+      "limits": "not a native OS acceptance or remote tenant/model execution"
+    },
+    {
+      "feature": "feishu",
+      "benefit": "配置飞书后，手动同步为新文档或同文档章节。",
+      "status": "current worktree implementation, pre-release",
+      "release": "0.1.0",
+      "source": [
+        "repo:src/renderer/App.tsx",
+        "repo:src/platform/sync/feishu.ts",
+        "repo:src/platform/sync/feishuChapter.ts"
+      ],
+      "component": "repo:src/renderer/App.tsx",
+      "demoState": "fixed synthetic notes and offline desktop bridge fixtures",
+      "limits": "not a native OS acceptance or remote tenant/model execution"
+    }
+  ]
+}

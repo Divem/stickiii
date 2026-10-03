@@ -1,0 +1,121 @@
+[
+  {
+    "actionId": "thought-land",
+    "sfxPeakDbFS": -9.13,
+    "duckedMusicPeakDbFS": -24.65,
+    "differenceDb": 15.52,
+    "note": "Peak comparison only; not a listening assessment"
+  },
+  {
+    "actionId": "window-open",
+    "sfxPeakDbFS": -9.13,
+    "duckedMusicPeakDbFS": -40.64,
+    "differenceDb": 31.51,
+    "note": "Peak comparison only; not a listening assessment"
+  },
+  {
+    "actionId": "type-note",
+    "sfxPeakDbFS": -18.54,
+    "duckedMusicPeakDbFS": -20.33,
+    "differenceDb": 1.79,
+    "note": "Peak comparison only; not a listening assessment"
+  },
+  {
+    "actionId": "type-note-1",
+    "sfxPeakDbFS": -18.54,
+    "duckedMusicPeakDbFS": -24.69,
+    "differenceDb": 6.15,
+    "note": "Peak comparison only; not a listening assessment"
+  },
+  {
+    "actionId": "type-note-2",
+    "sfxPeakDbFS": -18.54,
+    "duckedMusicPeakDbFS": -18.43,
+    "differenceDb": -0.11,
+    "note": "Peak comparison only; not a listening assessment"
+  },
+  {
+    "actionId": "type-note-3",
+    "sfxPeakDbFS": -18.54,
+    "duckedMusicPeakDbFS": -17.96,
+    "differenceDb": -0.58,
+    "note": "Peak comparison only; not a listening assessment"
+  },
+  {
+    "actionId": "preview-toggle",
+    "sfxPeakDbFS": -11.07,
+    "duckedMusicPeakDbFS": -35.36,
+    "differenceDb": 24.29,
+    "note": "Peak comparison only; not a listening assessment"
+  },
+  {
+    "actionId": "second-window",
+    "sfxPeakDbFS": -9.13,
+    "duckedMusicPeakDbFS": -19.54,
+    "differenceDb": 10.41,
+    "note": "Peak comparison only; not a listening assessment"
+  },
+  {
+    "actionId": "third-window",
+    "sfxPeakDbFS": -9.13,
+    "duckedMusicPeakDbFS": -30.24,
+    "differenceDb": 21.11,
+    "note": "Peak comparison only; not a listening assessment"
+  },
+  {
+    "actionId": "pin-note",
+    "sfxPeakDbFS": -12.02,
+    "duckedMusicPeakDbFS": -21.41,
+    "differenceDb": 9.39,
+    "note": "Peak comparison only; not a listening assessment"
+  },
+  {
+    "actionId": "themes-open",
+    "sfxPeakDbFS": -12.02,
+    "duckedMusicPeakDbFS": -24.27,
+    "differenceDb": 12.25,
+    "note": "Peak comparison only; not a listening assessment"
+  },
+  {
+    "actionId": "theme-sage",
+    "sfxPeakDbFS": -11.07,
+    "duckedMusicPeakDbFS": -24.9,
+    "differenceDb": 13.83,
+    "note": "Peak comparison only; not a listening assessment"
+  },
+  {
+    "actionId": "theme-lavender",
+    "sfxPeakDbFS": -11.07,
+    "duckedMusicPeakDbFS": -23.8,
+    "differenceDb": 12.73,
+    "note": "Peak comparison only; not a listening assessment"
+  },
+  {
+    "actionId": "ai-menu",
+    "sfxPeakDbFS": -12.02,
+    "duckedMusicPeakDbFS": -25.81,
+    "differenceDb": 13.79,
+    "note": "Peak comparison only; not a listening assessment"
+  },
+  {
+    "actionId": "feishu-config",
+    "sfxPeakDbFS": -12.02,
+    "duckedMusicPeakDbFS": -31.19,
+    "differenceDb": 19.17,
+    "note": "Peak comparison only; not a listening assessment"
+  },
+  {
+    "actionId": "feishu-mode",
+    "sfxPeakDbFS": -11.07,
+    "duckedMusicPeakDbFS": -31.64,
+    "differenceDb": 20.57,
+    "note": "Peak comparison only; not a listening assessment"
+  },
+  {
+    "actionId": "brand-land",
+    "sfxPeakDbFS": -5.52,
+    "duckedMusicPeakDbFS": -27.1,
+    "differenceDb": 21.58,
+    "note": "Peak comparison only; not a listening assessment"
+  }
+]

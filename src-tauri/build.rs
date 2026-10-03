@@ -11,6 +11,7 @@ fn main() {
             "open_main_window",
             "close_note_window",
             "pick_files",
+            "import_attachment",
             "open_attachment",
             "open_external_link",
             "list_sync_configs",

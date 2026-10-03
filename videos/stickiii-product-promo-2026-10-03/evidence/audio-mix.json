@@ -1,0 +1,502 @@
+{
+  "planSha256": "0ac02c2480f67cdd5d08ddd49a81a19e8519457dd71dee029475e58f68f0b184",
+  "music": {
+    "file": "assets/music.wav",
+    "gain": 0.68,
+    "sha256": "95828ae55aae088e4d856949435e049d8d07bdf3cbcbf28b265e74eabccfe900"
+  },
+  "cues": [
+    {
+      "at": 0.799,
+      "actionId": "thought-land",
+      "file": "assets/sfx/pop.wav",
+      "gain": 2.8,
+      "role": "sfx",
+      "kind": "pop",
+      "syncOffset": 0.001,
+      "sha256": "ea11b896eb402c995a63f01ff298f0def88deed0ce96d37eb5f52d266b654dc9"
+    },
+    {
+      "at": 4.549,
+      "actionId": "window-open",
+      "file": "assets/sfx/pop.wav",
+      "gain": 2.8,
+      "role": "sfx",
+      "kind": "pop",
+      "syncOffset": 0.001,
+      "sha256": "ea11b896eb402c995a63f01ff298f0def88deed0ce96d37eb5f52d266b654dc9"
+    },
+    {
+      "at": 5.549,
+      "actionId": "type-note",
+      "file": "assets/sfx/typing.wav",
+      "gain": 3.5,
+      "role": "sfx",
+      "kind": "typing",
+      "syncOffset": 0.001,
+      "sha256": "e0494ffecdd4a637ac582cbf7407fcbdea62320a5c67d1106c9e12e77324e9d1"
+    },
+    {
+      "at": 6.199,
+      "actionId": "type-note-1",
+      "file": "assets/sfx/typing.wav",
+      "gain": 3.5,
+      "role": "sfx",
+      "kind": "typing",
+      "syncOffset": 0.001,
+      "sha256": "e0494ffecdd4a637ac582cbf7407fcbdea62320a5c67d1106c9e12e77324e9d1"
+    },
+    {
+      "at": 6.899,
+      "actionId": "type-note-2",
+      "file": "assets/sfx/typing.wav",
+      "gain": 3.5,
+      "role": "sfx",
+      "kind": "typing",
+      "syncOffset": 0.001,
+      "sha256": "e0494ffecdd4a637ac582cbf7407fcbdea62320a5c67d1106c9e12e77324e9d1"
+    },
+    {
+      "at": 7.599,
+      "actionId": "type-note-3",
+      "file": "assets/sfx/typing.wav",
+      "gain": 3.5,
+      "role": "sfx",
+      "kind": "typing",
+      "syncOffset": 0.001,
+      "sha256": "e0494ffecdd4a637ac582cbf7407fcbdea62320a5c67d1106c9e12e77324e9d1"
+    },
+    {
+      "at": 13.999,
+      "actionId": "preview-toggle",
+      "file": "assets/sfx/toggle.wav",
+      "gain": 3.5,
+      "role": "sfx",
+      "kind": "toggle",
+      "syncOffset": 0.001,
+      "sha256": "509be1af88150e4acf3c273ae29ab404027876fb61d705de5f21d7a62b99d6b6"
+    },
+    {
+      "at": 20.799,
+      "actionId": "second-window",
+      "file": "assets/sfx/pop.wav",
+      "gain": 2.8,
+      "role": "sfx",
+      "kind": "pop",
+      "syncOffset": 0.001,
+      "sha256": "ea11b896eb402c995a63f01ff298f0def88deed0ce96d37eb5f52d266b654dc9"
+    },
+    {
+      "at": 21.599,
+      "actionId": "third-window",
+      "file": "assets/sfx/pop.wav",
+      "gain": 2.8,
+      "role": "sfx",
+      "kind": "pop",
+      "syncOffset": 0.001,
+      "sha256": "ea11b896eb402c995a63f01ff298f0def88deed0ce96d37eb5f52d266b654dc9"
+    },
+    {
+      "at": 22.999,
+      "actionId": "pin-note",
+      "file": "assets/sfx/click.wav",
+      "gain": 3.5,
+      "role": "sfx",
+      "kind": "click",
+      "syncOffset": 0.001,
+      "sha256": "8cb3444a4ab4640a7417dcb539a556bd10c697b19869c17c3d4289a4c1eebc13"
+    },
+    {
+      "at": 28.549,
+      "actionId": "themes-open",
+      "file": "assets/sfx/click.wav",
+      "gain": 3.5,
+      "role": "sfx",
+      "kind": "click",
+      "syncOffset": 0.001,
+      "sha256": "8cb3444a4ab4640a7417dcb539a556bd10c697b19869c17c3d4289a4c1eebc13"
+    },
+    {
+      "at": 29.649,
+      "actionId": "theme-sage",
+      "file": "assets/sfx/toggle.wav",
+      "gain": 3.5,
+      "role": "sfx",
+      "kind": "toggle",
+      "syncOffset": 0.001,
+      "sha256": "509be1af88150e4acf3c273ae29ab404027876fb61d705de5f21d7a62b99d6b6"
+    },
+    {
+      "at": 30.999,
+      "actionId": "theme-lavender",
+      "file": "assets/sfx/toggle.wav",
+      "gain": 3.5,
+      "role": "sfx",
+      "kind": "toggle",
+      "syncOffset": 0.001,
+      "sha256": "509be1af88150e4acf3c273ae29ab404027876fb61d705de5f21d7a62b99d6b6"
+    },
+    {
+      "at": 33.699,
+      "actionId": "ai-menu",
+      "file": "assets/sfx/click.wav",
+      "gain": 3.5,
+      "role": "sfx",
+      "kind": "click",
+      "syncOffset": 0.001,
+      "sha256": "8cb3444a4ab4640a7417dcb539a556bd10c697b19869c17c3d4289a4c1eebc13"
+    },
+    {
+      "at": 38.649,
+      "actionId": "feishu-config",
+      "file": "assets/sfx/click.wav",
+      "gain": 3.5,
+      "role": "sfx",
+      "kind": "click",
+      "syncOffset": 0.001,
+      "sha256": "8cb3444a4ab4640a7417dcb539a556bd10c697b19869c17c3d4289a4c1eebc13"
+    },
+    {
+      "at": 41.199,
+      "actionId": "feishu-mode",
+      "file": "assets/sfx/toggle.wav",
+      "gain": 3.5,
+      "role": "sfx",
+      "kind": "toggle",
+      "syncOffset": 0.001,
+      "sha256": "509be1af88150e4acf3c273ae29ab404027876fb61d705de5f21d7a62b99d6b6"
+    },
+    {
+      "at": 45.647,
+      "actionId": "brand-land",
+      "file": "assets/sfx/resolve.wav",
+      "gain": 2.8,
+      "role": "sfx",
+      "kind": "resolve",
+      "syncOffset": 0.003,
+      "sha256": "10986e5676fd4a404c27463066253a7f0dd1176bdf2e33551430370394e11116"
+    }
+  ],
+  "master": {
+    "file": "assets/master.wav",
+    "sha256": "e44b3de0c068d93f0755d169af799301daf455de63cda2511a5557d40897bfdd"
+  },
+  "sfxStem": {
+    "file": "assets/sfx-stem.wav",
+    "sha256": "2d6982d644a7613ca5cced2b61fd1952dc6a3a911403a2ae9efe3c6e9c8b4b0c"
+  },
+  "musicStem": {
+    "file": "assets/music-ducked.wav",
+    "sha256": "393ccd312daca2b659857f9b43399fe14be0c0909db9c4bece755d46aed85b9d"
+  },
+  "ducking": {
+    "method": "cue-envelope",
+    "windows": [
+      {
+        "actionId": "thought-land",
+        "kind": "pop",
+        "start": 0.76,
+        "attackEnd": 0.8,
+        "holdEnd": 0.92,
+        "end": 1.1600000000000001,
+        "db": 3.5
+      },
+      {
+        "actionId": "window-open",
+        "kind": "pop",
+        "start": 4.510000000000001,
+        "attackEnd": 4.550000000000001,
+        "holdEnd": 4.670000000000001,
+        "end": 4.910000000000001,
+        "db": 3.5
+      },
+      {
+        "actionId": "type-note",
+        "kind": "typing",
+        "start": 5.510000000000001,
+        "attackEnd": 5.550000000000001,
+        "holdEnd": 5.9,
+        "end": 6.15,
+        "db": 2.5
+      },
+      {
+        "actionId": "type-note-1",
+        "kind": "typing",
+        "start": 6.16,
+        "attackEnd": 6.2,
+        "holdEnd": 6.55,
+        "end": 6.8,
+        "db": 2.5
+      },
+      {
+        "actionId": "type-note-2",
+        "kind": "typing",
+        "start": 6.86,
+        "attackEnd": 6.9,
+        "holdEnd": 7.25,
+        "end": 7.5,
+        "db": 2.5
+      },
+      {
+        "actionId": "type-note-3",
+        "kind": "typing",
+        "start": 7.5600000000000005,
+        "attackEnd": 7.6000000000000005,
+        "holdEnd": 7.95,
+        "end": 8.2,
+        "db": 2.5
+      },
+      {
+        "actionId": "preview-toggle",
+        "kind": "toggle",
+        "start": 13.96,
+        "attackEnd": 14.0,
+        "holdEnd": 14.12,
+        "end": 14.36,
+        "db": 3
+      },
+      {
+        "actionId": "second-window",
+        "kind": "pop",
+        "start": 20.76,
+        "attackEnd": 20.8,
+        "holdEnd": 20.92,
+        "end": 21.16,
+        "db": 3.5
+      },
+      {
+        "actionId": "third-window",
+        "kind": "pop",
+        "start": 21.560000000000002,
+        "attackEnd": 21.6,
+        "holdEnd": 21.720000000000002,
+        "end": 21.96,
+        "db": 3.5
+      },
+      {
+        "actionId": "pin-note",
+        "kind": "click",
+        "start": 22.96,
+        "attackEnd": 23.0,
+        "holdEnd": 23.1,
+        "end": 23.3,
+        "db": 3
+      },
+      {
+        "actionId": "themes-open",
+        "kind": "click",
+        "start": 28.51,
+        "attackEnd": 28.55,
+        "holdEnd": 28.650000000000002,
+        "end": 28.85,
+        "db": 3
+      },
+      {
+        "actionId": "theme-sage",
+        "kind": "toggle",
+        "start": 29.610000000000003,
+        "attackEnd": 29.650000000000002,
+        "holdEnd": 29.770000000000003,
+        "end": 30.01,
+        "db": 3
+      },
+      {
+        "actionId": "theme-lavender",
+        "kind": "toggle",
+        "start": 30.96,
+        "attackEnd": 31.0,
+        "holdEnd": 31.12,
+        "end": 31.36,
+        "db": 3
+      },
+      {
+        "actionId": "ai-menu",
+        "kind": "click",
+        "start": 33.66,
+        "attackEnd": 33.699999999999996,
+        "holdEnd": 33.8,
+        "end": 34.0,
+        "db": 3
+      },
+      {
+        "actionId": "feishu-config",
+        "kind": "click",
+        "start": 38.61,
+        "attackEnd": 38.65,
+        "holdEnd": 38.75,
+        "end": 38.95,
+        "db": 3
+      },
+      {
+        "actionId": "feishu-mode",
+        "kind": "toggle",
+        "start": 41.16,
+        "attackEnd": 41.199999999999996,
+        "holdEnd": 41.31999999999999,
+        "end": 41.559999999999995,
+        "db": 3
+      },
+      {
+        "actionId": "brand-land",
+        "kind": "resolve",
+        "start": 45.61,
+        "attackEnd": 45.65,
+        "holdEnd": 46.199999999999996,
+        "end": 46.65,
+        "db": 5
+      }
+    ],
+    "overlap": "deepest-envelope-wins"
+  },
+  "timing": [
+    {
+      "actionId": "thought-land",
+      "fileStart": 0.799,
+      "audibleLandmark": 0.8,
+      "actionTime": 0.8,
+      "errorFrames": 0.0
+    },
+    {
+      "actionId": "window-open",
+      "fileStart": 4.549,
+      "audibleLandmark": 4.550000000000001,
+      "actionTime": 4.55,
+      "errorFrames": 0.0
+    },
+    {
+      "actionId": "type-note",
+      "fileStart": 5.549,
+      "audibleLandmark": 5.550000000000001,
+      "actionTime": 5.55,
+      "errorFrames": 0.0
+    },
+    {
+      "actionId": "type-note-1",
+      "fileStart": 6.199,
+      "audibleLandmark": 6.2,
+      "actionTime": 6.2,
+      "errorFrames": 0.0
+    },
+    {
+      "actionId": "type-note-2",
+      "fileStart": 6.899,
+      "audibleLandmark": 6.9,
+      "actionTime": 6.9,
+      "errorFrames": 0.0
+    },
+    {
+      "actionId": "type-note-3",
+      "fileStart": 7.599,
+      "audibleLandmark": 7.6000000000000005,
+      "actionTime": 7.6,
+      "errorFrames": 0.0
+    },
+    {
+      "actionId": "preview-toggle",
+      "fileStart": 13.999,
+      "audibleLandmark": 14.0,
+      "actionTime": 14.0,
+      "errorFrames": 0.0
+    },
+    {
+      "actionId": "second-window",
+      "fileStart": 20.799,
+      "audibleLandmark": 20.8,
+      "actionTime": 20.8,
+      "errorFrames": 0.0
+    },
+    {
+      "actionId": "third-window",
+      "fileStart": 21.599,
+      "audibleLandmark": 21.6,
+      "actionTime": 21.6,
+      "errorFrames": 0.0
+    },
+    {
+      "actionId": "pin-note",
+      "fileStart": 22.999,
+      "audibleLandmark": 23.0,
+      "actionTime": 23.0,
+      "errorFrames": 0.0
+    },
+    {
+      "actionId": "themes-open",
+      "fileStart": 28.549,
+      "audibleLandmark": 28.55,
+      "actionTime": 28.55,
+      "errorFrames": 0.0
+    },
+    {
+      "actionId": "theme-sage",
+      "fileStart": 29.649,
+      "audibleLandmark": 29.650000000000002,
+      "actionTime": 29.65,
+      "errorFrames": 0.0
+    },
+    {
+      "actionId": "theme-lavender",
+      "fileStart": 30.999,
+      "audibleLandmark": 31.0,
+      "actionTime": 31.0,
+      "errorFrames": 0.0
+    },
+    {
+      "actionId": "ai-menu",
+      "fileStart": 33.699,
+      "audibleLandmark": 33.699999999999996,
+      "actionTime": 33.7,
+      "errorFrames": -0.0
+    },
+    {
+      "actionId": "feishu-config",
+      "fileStart": 38.649,
+      "audibleLandmark": 38.65,
+      "actionTime": 38.65,
+      "errorFrames": 0.0
+    },
+    {
+      "actionId": "feishu-mode",
+      "fileStart": 41.199,
+      "audibleLandmark": 41.199999999999996,
+      "actionTime": 41.2,
+      "errorFrames": -0.0
+    },
+    {
+      "actionId": "brand-land",
+      "fileStart": 45.647,
+      "audibleLandmark": 45.65,
+      "actionTime": 45.65,
+      "errorFrames": 0.0
+    }
+  ],
+  "warnings": [],
+  "normalization": {
+    "requested": "linear",
+    "normalization_type": "dynamic",
+    "measurement": {
+      "input_i": "-26.18",
+      "input_tp": "-5.37",
+      "input_lra": "12.30",
+      "input_thresh": "-36.99",
+      "output_i": "-16.12",
+      "output_tp": "-1.50",
+      "output_lra": "6.30",
+      "output_thresh": "-26.84",
+      "normalization_type": "dynamic",
+      "target_offset": "0.12"
+    },
+    "output": {
+      "input_i": "-26.18",
+      "input_tp": "-5.37",
+      "input_lra": "12.30",
+      "input_thresh": "-36.99",
+      "output_i": "-16.03",
+      "output_tp": "-1.50",
+      "output_lra": "6.20",
+      "output_thresh": "-26.74",
+      "normalization_type": "dynamic",
+      "target_offset": "0.03"
+    }
+  },
+  "listeningStatus": "Not auditioned by script; listen to isolated SFX, final mix and encoded MP4."
+}
