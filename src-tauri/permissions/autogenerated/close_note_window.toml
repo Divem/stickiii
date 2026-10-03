@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-close-note-window"
+description = "Enables the close_note_window command without any pre-configured scope."
+commands.allow = ["close_note_window"]
+
+[[permission]]
+identifier = "deny-close-note-window"
+description = "Denies the close_note_window command without any pre-configured scope."
+commands.deny = ["close_note_window"]

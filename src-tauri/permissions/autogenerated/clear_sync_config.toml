@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-clear-sync-config"
+description = "Enables the clear_sync_config command without any pre-configured scope."
+commands.allow = ["clear_sync_config"]
+
+[[permission]]
+identifier = "deny-clear-sync-config"
+description = "Denies the clear_sync_config command without any pre-configured scope."
+commands.deny = ["clear_sync_config"]

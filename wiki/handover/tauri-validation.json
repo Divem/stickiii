@@ -1,0 +1,32 @@
+{
+  "verifiedAt": "2026-10-03T05:44:36.483944+00:00",
+  "version": "0.1.0",
+  "platform": "macOS arm64",
+  "artifacts": [
+    {
+      "path": "src-tauri/target/release/bundle/macos/Desk Tabs.app",
+      "logicalBytes": 5534401
+    },
+    {
+      "path": "src-tauri/target/release/bundle/dmg/Desk Tabs_0.1.0_aarch64.dmg",
+      "bytes": 3715801,
+      "sha256": "380f4738fd516f87473e25c40fc8d0d4aa73d056a69fc0aaefedc7b328bfc81b"
+    }
+  ],
+  "checks": {
+    "typecheck": true,
+    "typescriptContractTests": 44,
+    "rustTests": 11,
+    "wkWebViewSmoke": true,
+    "dmgChecksum": true,
+    "dmgContentsMatchApp": true,
+    "electronRuntimeRemoved": true,
+    "qaHooksExcludedFromRelease": true,
+    "wkWebViewSmokeMode": "isolated debug build; real React handlers and Rust IPC"
+  },
+  "boundaries": {
+    "windowsRuntimeTested": false,
+    "feishuTenantWritesTested": false,
+    "signedAndNotarizedRelease": false
+  }
+}

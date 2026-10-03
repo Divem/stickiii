@@ -3,6 +3,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
+  base: "./",
   plugins: [react()],
   resolve: {
     alias: {
@@ -12,7 +13,7 @@ export default defineConfig({
   build: {
     outDir: "dist/renderer",
     emptyOutDir: true,
-    target: "chrome114",
+    target: ["es2021", "chrome105", "safari14"],
     sourcemap: false,
   },
 });

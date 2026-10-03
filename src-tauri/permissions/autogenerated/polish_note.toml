@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-polish-note"
+description = "Enables the polish_note command without any pre-configured scope."
+commands.allow = ["polish_note"]
+
+[[permission]]
+identifier = "deny-polish-note"
+description = "Denies the polish_note command without any pre-configured scope."
+commands.deny = ["polish_note"]

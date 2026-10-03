@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">Desk Tabs</title>
+  <desc id="desc">A stack of tabs with a note card in front</desc>
+  <defs>
+    <linearGradient id="bg" x1="18" y1="12" x2="111" y2="116" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#30423c"/>
+      <stop offset="1" stop-color="#1d2b2a"/>
+    </linearGradient>
+    <linearGradient id="card" x1="30" y1="28" x2="101" y2="105" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#e5f58f"/>
+      <stop offset="1" stop-color="#c9e66b"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="31" fill="url(#bg)"/>
+  <path d="M35 27h40c4.4 0 8 3.6 8 8v13H27V35c0-4.4 3.6-8 8-8Z" fill="#789466"/>
+  <path d="M28 39h58c4.4 0 8 3.6 8 8v13H20V47c0-4.4 3.6-8 8-8Z" fill="#9fba72"/>
+  <path d="M31 31h43l23 23v39c0 6.1-4.9 11-11 11H31c-6.1 0-11-4.9-11-11V42c0-6.1 4.9-11 11-11Z" fill="url(#card)"/>
+  <path d="M74 31v15c0 4.4 3.6 8 8 8h15L74 31Z" fill="#a8c85a"/>
+  <path d="M37 62h47M37 73h35M37 84h25" fill="none" stroke="#30453a" stroke-linecap="round" stroke-width="6"/>
+  <circle cx="91" cy="89" r="8" fill="#30453a"/>
+  <path d="m88.5 89 2 2 4-4" fill="none" stroke="#e5f58f" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"/>
+</svg>

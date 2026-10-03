@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "note",
+  "description": "Rust 创建且绑定单条便签的本地窗口。每个命令还需校验原生窗口与便签、附件或同步任务的归属。",
+  "windows": ["note-*"],
+  "permissions": [
+    "core:event:allow-listen", "core:event:allow-unlisten",
+    "allow-get-window-context", "allow-open-main-window", "allow-close-note-window",
+    "allow-list-notes", "allow-save-note", "allow-pick-files", "allow-open-attachment", "allow-open-external-link",
+    "allow-list-sync-configs", "allow-get-ai-config", "allow-polish-note", "allow-ai-note",
+    "allow-set-pinned-window", "allow-minimize-window", "allow-start-dragging", "allow-ready-window", "allow-complete-exit",
+    "allow-sync-begin", "allow-sync-checkpoint", "allow-sync-finish", "allow-feishu-request"
+  ]
+}

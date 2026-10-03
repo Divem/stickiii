@@ -1,0 +1,44 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "贴贴便签",
+  "version": "../package.json",
+  "identifier": "com.dawinyuan.desktabs",
+  "build": {
+    "beforeDevCommand": "npm run dev:renderer",
+    "devUrl": "http://127.0.0.1:5173",
+    "beforeBuildCommand": "npm run build:renderer",
+    "frontendDist": "../dist/renderer"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [{
+      "label": "main",
+      "create": false,
+      "title": "贴贴便签",
+      "width": 440,
+      "height": 390,
+      "minWidth": 320,
+      "minHeight": 260,
+      "maxWidth": 760,
+      "maxHeight": 860,
+      "decorations": false,
+      "transparent": true,
+      "backgroundColor": "#00000000",
+      "visible": false,
+      "resizable": true,
+      "fullscreen": false,
+      "dragDropEnabled": false
+    }],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; font-src 'self' data:; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'none'",
+      "devCsp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; font-src 'self' data:; connect-src ipc: http://ipc.localhost http://127.0.0.1:5173 ws://127.0.0.1:5173; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.icns", "icons/icon.ico"],
+    "macOS": { "minimumSystemVersion": "11.0" },
+    "windows": { "webviewInstallMode": { "type": "downloadBootstrapper" } }
+  }
+}

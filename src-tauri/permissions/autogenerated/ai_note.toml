@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-ai-note"
+description = "Enables the ai_note command without any pre-configured scope."
+commands.allow = ["ai_note"]
+
+[[permission]]
+identifier = "deny-ai-note"
+description = "Denies the ai_note command without any pre-configured scope."
+commands.deny = ["ai_note"]

@@ -11,9 +11,14 @@ venv/
 # Node
 node_modules/
 dist/
+release/
 .vite/
 
-# Electron runtime data
+# Tauri / Rust
+src-tauri/target/
+src-tauri/gen/
+
+# Runtime data
 *.log
 
 # IDE

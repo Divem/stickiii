@@ -1,0 +1,13 @@
+language: zh
+protected_dirs: []
+enabled_dirs:
+  - prd
+  - tech
+  - design
+  - handover
+  - research
+  - reports
+  - planning
+  - archive
+  - raw-source
+extra_dirs: []

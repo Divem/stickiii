@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-feishu-request"
+description = "Enables the feishu_request command without any pre-configured scope."
+commands.allow = ["feishu_request"]
+
+[[permission]]
+identifier = "deny-feishu-request"
+description = "Denies the feishu_request command without any pre-configured scope."
+commands.deny = ["feishu_request"]
