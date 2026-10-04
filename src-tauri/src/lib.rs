@@ -1303,6 +1303,7 @@ pub fn run() {
             });
             let window =
                 tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
+                    .accept_first_mouse(true)
                     .shadow(false)
                     .on_navigation(trusted_url)
                     .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)

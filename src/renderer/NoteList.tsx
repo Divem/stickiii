@@ -1,5 +1,5 @@
 import { Plus, Search, PanelTop } from "lucide-react";
-import { memo, useDeferredValue, useMemo, useState } from "react";
+import { memo, useDeferredValue, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import type { Note } from "../shared/types.js";
 import { getNoteTitle } from "../shared/notes.js";
 import { t, type Locale } from "./i18n.js";
@@ -12,12 +12,28 @@ const NoteRow = memo(function NoteRow({ note, selected, locale, onSelect, onOpen
   const time = useMemo(() => new Date(note.updatedAt).toLocaleDateString(locale === "zh" ? "zh-CN" : "en-US", {
     month: "short", day: "numeric",
   }), [note.updatedAt, locale]);
-  // Keep search focus until click runs; WebKit can blur it before mouseup.
-  return <div className="note-list-row" onMouseDown={(event) => { if (event.button === 0) event.preventDefault(); }}><button className={`popover-note ${selected ? "selected" : ""}`} aria-current={selected ? "true" : undefined}
-    title={title || t("untitled", locale)} onClick={() => onSelect(note)}>
+  const selectPointerUp = useRef(false);
+  const openPointerUp = useRef(false);
+  const runOnPointerUp = (event: ReactPointerEvent<HTMLButtonElement>, action: () => void, pointerUp: { current: boolean }): void => {
+    if (event.pointerType === "mouse" && event.button === 0) {
+      pointerUp.current = true;
+      action();
+    }
+  };
+  const runOnClick = (event: ReactMouseEvent<HTMLButtonElement>, action: () => void, pointerUp: { current: boolean }): void => {
+    if (pointerUp.current && event.detail > 0) {
+      pointerUp.current = false;
+      return;
+    }
+    pointerUp.current = false;
+    action();
+  };
+  // Run on pointerup as well as click because WebKit may consume click while focus moves.
+  return <div className="note-list-row"><button className={`popover-note ${selected ? "selected" : ""}`} aria-current={selected ? "true" : undefined}
+    title={title || t("untitled", locale)} onPointerUp={(event) => runOnPointerUp(event, () => onSelect(note), selectPointerUp)} onPointerCancel={() => { selectPointerUp.current = false; }} onClick={(event) => runOnClick(event, () => onSelect(note), selectPointerUp)}>
     <span>{title || t("untitled", locale)}{independent && <span className="independent-marker" title={t("independentNote", locale)}> · ↗</span>}</span><small>{time}</small>
   </button><button className="note-list-open" aria-label={`${t(independent ? "focusNoteWindow" : "openNoteWindow", locale)} · ${title || t("untitled", locale)}`}
-    title={t(independent ? "focusNoteWindow" : "openNoteWindow", locale)} onClick={() => onOpen(note.id)}><PanelTop size={13} /></button></div>;
+    title={t(independent ? "focusNoteWindow" : "openNoteWindow", locale)} onPointerUp={(event) => runOnPointerUp(event, () => onOpen(note.id), openPointerUp)} onPointerCancel={() => { openPointerUp.current = false; }} onClick={(event) => runOnClick(event, () => onOpen(note.id), openPointerUp)}><PanelTop size={13} /></button></div>;
 });
 
 export default function NoteList({ notes, activeNote, locale, newNoteTip, onSelect, onNew, onOpen, openNoteIds }: {

@@ -296,6 +296,7 @@ pub fn open(app: &AppHandle, note_id: &str) -> Result<(), String> {
             &label,
             tauri::WebviewUrl::App("index.html".into()),
         )
+        .accept_first_mouse(true)
         .title("贴贴便签")
         .inner_size(layout.width, layout.height)
         .min_inner_size(320.0, 260.0)

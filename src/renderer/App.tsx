@@ -25,7 +25,7 @@ import {
   PanelTop,
   CornerUpLeft,
 } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { DEFAULT_SHORTCUTS, type AiConfig, type AiOperation, type FeishuSyncMode, type Note, type NoteAttachment, type NoteThemeId, type ShortcutActionId, type ShortcutConfig, type SyncProviderConfig, type SyncProviderId } from "../shared/types.js";
 import { parseFeishuTarget } from "../shared/feishuTarget.js";
 import { DEFAULT_THEME_OPACITY, MIN_THEME_OPACITY, getNoteTitle, isNoteThemeId, normalizeThemeOpacity } from "../shared/notes.js";
@@ -200,8 +200,26 @@ export default function App({ context }: { context: NoteWindowContext }) {
   const saveQueue = saveQueueRef.current;
   const [isPinned, setIsPinned] = useState(context.pinned);
   const [isWindowFocused, setIsWindowFocused] = useState(() => document.hasFocus());
+  const windowFocusRef = useRef(document.hasFocus());
   const [shortcutConfigs, setShortcutConfigs] = useState<ShortcutConfig[]>([]);
   const [recordingShortcut, setRecordingShortcut] = useState<ShortcutActionId | null>(null);
+  const notesMenuPointerUp = useRef(false);
+
+  function handleNotesMenuPointerUp(event: ReactPointerEvent<HTMLButtonElement>): void {
+    if (event.pointerType === "mouse" && event.button === 0) {
+      notesMenuPointerUp.current = true;
+      toggleMenu("notes");
+    }
+  }
+
+  function handleNotesMenuClick(event: ReactMouseEvent<HTMLButtonElement>): void {
+    if (notesMenuPointerUp.current && event.detail > 0) {
+      notesMenuPointerUp.current = false;
+      return;
+    }
+    notesMenuPointerUp.current = false;
+    toggleMenu("notes");
+  }
 
   function closeMenus(): void {
     setOpenMenu(null);
@@ -240,8 +258,8 @@ export default function App({ context }: { context: NoteWindowContext }) {
   }
 
   useEffect(() => {
-    const handleFocus = (): void => setIsWindowFocused(true);
-    const handleBlur = (): void => setIsWindowFocused(false);
+    const handleFocus = (): void => { windowFocusRef.current = true; setIsWindowFocused(true); };
+    const handleBlur = (): void => { windowFocusRef.current = false; setIsWindowFocused(false); };
     window.addEventListener("focus", handleFocus);
     window.addEventListener("blur", handleBlur);
     return () => {
@@ -269,7 +287,13 @@ export default function App({ context }: { context: NoteWindowContext }) {
   useEffect(() => {
     // Keep settings drafts open when switching apps to copy links or credentials.
     const handleWindowBlur = (): void => {
-      if (openMenu !== "settings") closeMenus();
+      // On macOS, activating an inactive transparent window can emit a short
+      // blur/focus pair around the same native click. Do not erase a menu that
+      // the click just opened unless the document is still unfocused.
+      window.setTimeout(() => {
+        if (windowFocusRef.current) return;
+        if (openMenu !== "settings") closeMenus();
+      }, 0);
     };
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (event.key === "Escape") closeMenus();
@@ -1085,7 +1109,7 @@ export default function App({ context }: { context: NoteWindowContext }) {
         <div className="window-tools" onClick={(event) => event.stopPropagation()}>
           {!isSingleNote && <button className="window-tool" disabled={!loaded || isNavigating || exiting || transferring} aria-label={t("quickCapture", locale)} title={shortcutTitle(t("quickCapture", locale), "newNote")} onClick={() => void handleNewNote()}><Plus size={14} /></button>}
           <button className="window-tool editor-mode-switch" role="switch" aria-label={t("togglePreview", locale)} aria-keyshortcuts={navigator.platform.toLowerCase().includes("mac") ? "Meta+E" : "Control+E"} aria-checked={editorMode === "preview"} disabled={!draft || exiting || isDelegated || transferring || isNavigating} title={t(editorMode === "edit" ? "switchToPreview" : "switchToEdit", locale).replace("{shortcut}", displayShortcut("CommandOrControl+E"))} onClick={toggleEditorMode}><Eye size={14} /></button>
-          {!isSingleNote && <button className="window-tool" data-menu-trigger="notes" disabled={!loaded || exiting} aria-label={t("viewNotes", locale)} title={t("viewNotes", locale)} aria-expanded={openMenu === "notes"} onClick={() => toggleMenu("notes")}><Layers3 size={14} /></button>}
+          {!isSingleNote && <button className="window-tool" data-menu-trigger="notes" disabled={!loaded || exiting} aria-label={t("viewNotes", locale)} title={t("viewNotes", locale)} aria-expanded={openMenu === "notes"} onPointerUp={handleNotesMenuPointerUp} onPointerCancel={() => { notesMenuPointerUp.current = false; }} onClick={handleNotesMenuClick}><Layers3 size={14} /></button>}
           <button className={`window-tool pinned-badge ${isPinned ? "active" : ""}`} aria-pressed={isPinned} aria-label={t(isPinned ? "unpinWindow" : "pinWindow", locale)} title={isPinned ? `${t("pinned", locale)} · ${t("unpinWindow", locale)}` : t("pinWindow", locale)} onClick={() => void handleTogglePin()}><Pin size={14} /></button>
           <button className="window-tool" data-menu-trigger="actions" aria-label={t("moreActions", locale)} title={t("moreActions", locale)} onClick={() => toggleMenu("actions")}><MoreHorizontal size={16} /></button>
           <button className="window-tool minimize" disabled={exiting} aria-label={t("minimize", locale)} title={t("minimize", locale)} onClick={() => void hideWindow(true)}><Minus size={14} /></button>

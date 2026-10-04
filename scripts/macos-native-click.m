@@ -1,5 +1,6 @@
 #import <Cocoa/Cocoa.h>
 #import <ApplicationServices/ApplicationServices.h>
+#include <unistd.h>
 
 // A separate QA process takes focus before sending one real mouse click to the
 // isolated app. DOM .click() bypasses macOS first-mouse delivery entirely.
@@ -24,12 +25,22 @@ int main(int argc, const char *argv[]) {
                 fprintf(stderr, "Native click QA could not take focus.\n");
                 exit(1);
             }
-            NSArray *windows = CFBridgingRelease(CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly, kCGNullWindowID));
             NSDictionary *bounds = nil;
-            for (NSDictionary *window in windows) {
-                if ([window[(__bridge NSString *)kCGWindowOwnerPID] intValue] == target) {
-                    bounds = window[(__bridge NSString *)kCGWindowBounds];
-                    break;
+            for (int attempt = 0; attempt < 50 && !bounds; attempt++) {
+                if (attempt > 0) usleep(100 * 1000);
+                NSArray *windows = CFBridgingRelease(CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly, kCGNullWindowID));
+                double bestArea = 0;
+                for (NSDictionary *window in windows) {
+                    if ([window[(__bridge NSString *)kCGWindowOwnerPID] intValue] != target) continue;
+                    NSDictionary *candidate = window[(__bridge NSString *)kCGWindowBounds];
+                    double area = [candidate[@"Width"] doubleValue] * [candidate[@"Height"] doubleValue];
+                    const BOOL mainLayer = [window[(__bridge NSString *)kCGWindowLayer] intValue] == 0;
+                    if (mainLayer || !bounds) {
+                        if (mainLayer || area > bestArea) {
+                            bounds = candidate;
+                            bestArea = area;
+                        }
+                    }
                 }
             }
             if (!bounds) {

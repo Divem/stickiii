@@ -214,13 +214,12 @@
         await window.desktopTabs.setPinnedWindow(false);
       }
       // Safari can blur the auto-focused search field with relatedTarget=null
-      // before dispatching a row's click. Keep the original button connected
-      // across that native focus transition for both list actions.
+      // before dispatching a row's click. The list must still handle one
+      // pointer release after that focus transition for both list actions.
       const listButton = document.querySelector('button[aria-label="查看便签"]');
       for (const key of ["B", "A"]) {
         listButton.click();
         const row = await wait(() => [...document.querySelectorAll(".popover-note")].find((button) => button.title === `窗口 ${key}`), "history row before blur");
-        check(!row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 })), "HISTORY_POINTER_DOWN_PRESERVES_SEARCH_FOCUS");
         document.querySelector(".notes-search input").blur();
         await settle();
         check(row.isConnected, "HISTORY_ROW_SURVIVES_SEARCH_BLUR");
@@ -248,7 +247,6 @@
       const listOpen = bRow.querySelector(".note-list-open");
       const list = document.querySelector(".notes-popover");
       result.listEntryLayout = listOpen.getBoundingClientRect().width <= 30 && list.scrollWidth <= list.clientWidth + 1;
-      check(!listOpen.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 })), "INDEPENDENT_POINTER_DOWN_PRESERVES_SEARCH_FOCUS");
       document.querySelector(".notes-search input").blur();
       await settle();
       check(listOpen.isConnected, "INDEPENDENT_BUTTON_SURVIVES_SEARCH_BLUR");

@@ -105,16 +105,21 @@ test("native shell keeps the small note window and cursor positioning", async ()
   assert.match(source, /cursor_position/);
   assert.match(source, /set_visible_on_all_workspaces/);
   assert.match(source, /set_always_on_top\(pinned/);
+  assert.match(source, /accept_first_mouse\(true\)/);
+  assert.match(JSON.stringify(window), /acceptFirstMouse/);
 });
 
 test("desktop bridge exposes pin control and the renderer puts note switching in the top bar", async () => {
-  const [preload, renderer, noteList] = await Promise.all([read("src/renderer/desktop.ts"), read("src/renderer/App.tsx"), read("src/renderer/NoteList.tsx")]);
+  const [preload, renderer, noteList, noteBook] = await Promise.all([read("src/renderer/desktop.ts"), read("src/renderer/App.tsx"), read("src/renderer/NoteList.tsx"), read("src/renderer/NoteBook.tsx")]);
   assert.match(preload, /setPinnedWindow/);
   assert.match(renderer, /handleTogglePin/);
   assert.match(renderer, /viewNotes/);
   assert.match(renderer, /<NoteList /);
   assert.match(noteList, /notes-header/);
   assert.match(noteList, /notes-new-button/);
+  assert.match(renderer, /onPointerUp=\{handleNotesMenuPointerUp\}/);
+  assert.match(noteBook, /note-page-position/);
+  assert.match(noteList, /onPointerUp/);
 });
 
 test("unconfigured Feishu and unimplemented Notion report honest states", async () => {

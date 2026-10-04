@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, Paperclip } from "lucide-react";
-import { memo, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
+import { memo, useLayoutEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { Note } from "../shared/types.js";
 import { getNoteTitle, isNoteThemeId } from "../shared/notes.js";
 import MarkdownPreview from "./MarkdownPreview.js";
@@ -41,7 +41,24 @@ export default function NoteBook({ previousNote, nextNote, currentIndex, total, 
   const outgoingRef = useRef<HTMLDivElement>(null);
   const outgoingContentRef = useRef<HTMLDivElement>(null);
   const outgoingEditorRef = useRef<NoteEditorHandle>(null);
+  const pagePositionPointerUp = useRef(false);
   const hasNeighbors = !!previousNote && !!nextNote;
+
+  function handlePagePositionPointerUp(event: ReactPointerEvent<HTMLButtonElement>): void {
+    if (event.pointerType === "mouse" && event.button === 0) {
+      pagePositionPointerUp.current = true;
+      onShowNotes();
+    }
+  }
+
+  function handlePagePositionClick(event: ReactMouseEvent<HTMLButtonElement>): void {
+    if (pagePositionPointerUp.current && event.detail > 0) {
+      pagePositionPointerUp.current = false;
+      return;
+    }
+    pagePositionPointerUp.current = false;
+    onShowNotes();
+  }
 
   useLayoutEffect(() => {
     if (!turn || !pageRef.current || !outgoingRef.current) return;
@@ -85,6 +102,6 @@ export default function NoteBook({ previousNote, nextNote, currentIndex, total, 
         <span key={attachment.id}><Paperclip size={12} />{attachment.name}</span>)}</div>}
     </div>}
     {hasNeighbors && <button className="note-page-position" data-menu-trigger="notes" disabled={busy} aria-label={`${pageLabel} · ${t("viewNotes", locale)}`}
-      title={t("viewNotes", locale)} onClick={onShowNotes}><span aria-hidden="true">{currentIndex + 1} / {total}</span></button>}
+      title={t("viewNotes", locale)} onPointerUp={handlePagePositionPointerUp} onPointerCancel={() => { pagePositionPointerUp.current = false; }} onClick={handlePagePositionClick}><span aria-hidden="true">{currentIndex + 1} / {total}</span></button>}
   </div>;
 }

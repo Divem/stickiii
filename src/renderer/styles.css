@@ -362,8 +362,8 @@ button:disabled { cursor: default; opacity: .45; }
 .ai-action-group { position: relative; display: flex; flex: none; align-items: center; }
 .ai-action-buttons { display: flex; align-items: center; }
 .ai-action-buttons .ai-polish-button { border-radius: 6px 0 0 6px; }
-.ai-action-arrow { display: grid; width: 18px; height: 26px; flex: none; place-items: center; padding: 0; color: var(--muted); background: var(--card); border-radius: 0 6px 6px 0; }
-.ai-action-arrow:not(:disabled):hover, .ai-action-arrow[aria-expanded="true"] { color: var(--accent-strong); background: var(--accent-soft); }
+.ai-action-arrow { display: grid; width: 18px; height: 26px; flex: none; place-items: center; padding: 0; color: var(--body-ink); background: transparent; border-radius: 0 6px 6px 0; transition: color .15s, background .15s; }
+.ai-action-arrow:not(:disabled):hover, .ai-action-arrow[aria-expanded="true"] { color: var(--ink); background: var(--button-hover); }
 .ai-action-menu { position: absolute; z-index: 12; right: 0; bottom: 32px; display: flex; min-width: 126px; flex-direction: column; padding: 5px; background: var(--popover); border-radius: 9px; box-shadow: 0 10px 24px var(--shadow); animation: pop-in .14s ease-out; }
 .ai-action-menu button { display: flex; width: 100%; align-items: center; gap: 7px; padding: 8px 7px; color: var(--body-ink); background: transparent; border-radius: 6px; font-size: 10px; white-space: nowrap; }
 .ai-action-menu button:hover { color: var(--ink); background: var(--button-hover); }
