@@ -70,7 +70,7 @@ export default function NoteEditor({ note, preview, readOnly, importing, importD
     <InlineNoteContent key={note.id} note={note} hidden={preview} readOnly={readOnly} importing={importing} locale={locale}
       editorRef={editorRef} onChange={onChange} onOpenAttachment={onOpenAttachment} onRemoveAttachment={onRemoveAttachment} />
     {preview && <MarkdownPreview previewRef={previewRef} noteId={note.id} attachments={note.attachments} imageReady={!importing}
-      content={note.content} locale={locale} onOpenLink={onOpenLink} onOpenAttachment={onOpenAttachment} />}
+      content={note.content} locale={locale} onOpenLink={onOpenLink} onOpenAttachment={onOpenAttachment} onChange={readOnly ? undefined : onChange} />}
     {files.length > 0 && <div className="attachment-strip">{files.map((attachment) => (
       <div className="attachment-card" key={attachment.id}>
         <button className="attachment-open-button" onClick={() => onOpenAttachment(attachment)} title={attachment.name}>

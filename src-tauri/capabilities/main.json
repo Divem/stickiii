@@ -5,8 +5,8 @@
   "windows": ["main"],
   "permissions": [
     "allow-get-window-context", "allow-set-window-title", "allow-open-note-window", "allow-focus-note-window", "allow-open-main-window",
-    "allow-list-notes", "allow-save-note", "allow-delete-note", "allow-pick-files", "allow-import-attachment", "allow-attachment-preview", "allow-open-attachment", "allow-open-external-link",
-    "allow-list-sync-configs", "allow-save-sync-config", "allow-clear-sync-config", "allow-list-shortcuts", "allow-save-shortcuts",
+    "allow-list-notes", "allow-save-note", "allow-delete-note", "allow-restore-note", "allow-create-note-copy", "allow-pick-files", "allow-import-attachment", "allow-attachment-preview", "allow-open-attachment", "allow-open-external-link",
+    "allow-list-sync-configs", "allow-save-sync-config", "allow-clear-sync-config", "allow-check-feishu-connection", "allow-list-shortcuts", "allow-save-shortcuts",
     "allow-get-ai-config", "allow-save-ai-config", "allow-clear-ai-config", "allow-polish-note", "allow-ai-note",
     "allow-test-ai-connection",
     "allow-set-pinned-window", "allow-minimize-window", "allow-hide-window", "allow-start-dragging", "allow-ready-window", "allow-complete-exit", "allow-request-exit",

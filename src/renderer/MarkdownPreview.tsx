@@ -5,9 +5,18 @@ import { attachmentImageId, contentWithAttachmentImages, externalWebUrl } from "
 import type { NoteAttachment } from "../shared/types.js";
 import NoteImage from "./NoteImage.js";
 import { t, type Locale } from "./i18n.js";
-import { memo, type Ref } from "react";
+import { createContext, memo, useContext, type Ref } from "react";
+import { toggleMarkdownTask } from "./markdownEditing.js";
 
-export default memo(function MarkdownPreview({ content, locale, onOpenLink, previewRef, noteId, attachments = [], onOpenAttachment, imageReady }: {
+const TaskLine = createContext<number | null>(null);
+function TaskCheckbox({ checked, content, onChange, locale }: { checked: boolean; content: string; onChange?: (content: string) => void; locale: Locale }) {
+  const line = useContext(TaskLine);
+  return <input type="checkbox" checked={checked} disabled={!onChange || !line} aria-label={t(checked ? "markTaskIncomplete" : "markTaskComplete", locale)} onChange={(event) => {
+    if (line && onChange) onChange(toggleMarkdownTask(content, line, event.target.checked));
+  }} />;
+}
+
+export default memo(function MarkdownPreview({ content, locale, onOpenLink, previewRef, noteId, attachments = [], onOpenAttachment, imageReady, onChange }: {
   content: string;
   locale: Locale;
   onOpenLink: (url: string) => void;
@@ -16,6 +25,7 @@ export default memo(function MarkdownPreview({ content, locale, onOpenLink, prev
   attachments?: NoteAttachment[];
   onOpenAttachment?: (attachment: NoteAttachment) => void;
   imageReady?: boolean;
+  onChange?: (content: string) => void;
 }) {
   const body = contentWithAttachmentImages(content, attachments);
   const imageAttachment = (url: string) => attachments.find((item) => item.id === attachmentImageId(url) && item.mimeType.startsWith("image/"));
@@ -23,6 +33,8 @@ export default memo(function MarkdownPreview({ content, locale, onOpenLink, prev
     {body.trim() ? <Markdown remarkPlugins={[remarkGfm, remarkBreaks]} skipHtml
       urlTransform={(url, key) => key === "src" && imageAttachment(url) ? url : externalWebUrl(url) ?? ""}
       components={{
+        li: ({ node, children, ...props }) => <TaskLine.Provider value={node?.position?.start.line ?? null}><li {...props}>{children}</li></TaskLine.Provider>,
+        input: ({ checked }) => <TaskCheckbox checked={checked === true} content={body} onChange={onChange} locale={locale} />,
         a: ({ href, children }) => href ? <a href={href} onClick={(event) => { event.preventDefault(); onOpenLink(href); }}>{children}</a> : <span>{children}</span>,
         img: ({ src, alt }) => {
           const attachment = typeof src === "string" ? imageAttachment(src) : undefined;

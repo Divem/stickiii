@@ -11,6 +11,19 @@ afterEach(() => clearMocks());
 const note = { id: "native-note", content: "Title\nbody", attachments: [], createdAt: "", updatedAt: "", syncState: "local" };
 const config = { provider: "feishu", appId: "cli_native", appSecretConfigured: true, collaboratorEmail: "user@example.com", syncMode: "create", updatedAt: "" };
 
+test("recovery, AI copy and read-only connection checks use named native commands", async () => {
+  const calls = [];
+  mockIPC((command, payload) => { calls.push({ command, payload }); return command === "check_feishu_connection" ? { status: "connected", scope: "target", latencyMs: 1 } : note; });
+  await desktopTabs.restoreNote(note.id);
+  await desktopTabs.createNoteCopy(note.id, "Reviewed result");
+  await desktopTabs.checkFeishuConnection();
+  assert.deepEqual(calls, [
+    { command: "restore_note", payload: { noteId: note.id } },
+    { command: "create_note_copy", payload: { noteId: note.id, content: "Reviewed result" } },
+    { command: "check_feishu_connection", payload: {} },
+  ]);
+});
+
 test("configuration reads default to public metadata and legacy access must be requested explicitly", async () => {
   const calls = [];
   mockIPC((command, payload) => { calls.push({ command, payload }); return command === "list_sync_configs" ? [] : null; });

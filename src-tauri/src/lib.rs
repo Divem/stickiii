@@ -301,6 +301,54 @@ async fn delete_note(window: WebviewWindow, app: AppHandle, note_id: String) -> 
     result
 }
 #[tauri::command]
+async fn check_feishu_connection(window: WebviewWindow, state: State<'_, AppState>) -> Result<Value, String> {
+    guard(&window)?;
+    let config = state.configs.lock().map_err(|_| "SYNC_CONFIG_UNAVAILABLE")?.credentials("feishu")?;
+    let Some(config) = config else { return Ok(json!({"status":"error","message":"not-configured"})); };
+    let Ok(mut network) = state.network.try_lock() else { return Ok(json!({"status":"error","message":"busy"})); };
+    match network.check_connection(&config).await {
+        Ok(result) => Ok(result),
+        Err(error) => Ok(json!({"status":"error","message":error.message,"apiCode":error.api_code})),
+    }
+}
+
+#[tauri::command]
+async fn create_note_copy(window: WebviewWindow, app: AppHandle, note_id: String, content: String) -> Result<Value, String> {
+    note_windows::guard(&window, &app.state::<AppState>())?;
+    if content.len() > 64 * 1024 { return Err("NOTE_TOO_LARGE".into()); }
+    let label = window.label().to_string();
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        if state.exit_pending.load(Ordering::SeqCst) { return Err("EXIT_PENDING".into()); }
+        let registry = state.windows.lock().map_err(|_| "WINDOW_UNAVAILABLE")?;
+        registry.authorize(&label, &note_id, false)?;
+        let mut store = state.store.lock().map_err(|_| "LOCAL_SAVE_FAILED")?;
+        let source = store.notes.iter().find(|note| note["id"] == note_id).ok_or("NOTE_MISSING")?;
+        let note = json!({"id": uuid::Uuid::new_v4().to_string(), "content":content, "attachments":source["attachments"], "theme":source["theme"], "syncState":"local"});
+        let saved = store.save(note)?;
+        drop(store); drop(registry);
+        note_windows::notify_note(&app, &saved, &label);
+        if label != "main" { let _ = note_windows::send(&app, "main", "note:activate", saved["id"].as_str().unwrap()); }
+        Ok(saved)
+    }).await.map_err(|_| "LOCAL_SAVE_FAILED")?
+}
+
+#[tauri::command]
+async fn restore_note(window: WebviewWindow, app: AppHandle, note_id: String) -> Result<Value, String> {
+    guard(&window)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        if state.exit_pending.load(Ordering::SeqCst) { return Err("EXIT_PENDING".into()); }
+        let registry = state.windows.lock().map_err(|_| "WINDOW_UNAVAILABLE")?;
+        registry.authorize("main", &note_id, true)?;
+        let saved = state.store.lock().map_err(|_| "LOCAL_SAVE_FAILED")?.restore(&note_id)?;
+        drop(registry);
+        note_windows::notify_note(&app, &saved, "main");
+        Ok(saved)
+    }).await.map_err(|_| "LOCAL_SAVE_FAILED")?
+}
+
+#[tauri::command]
 async fn pick_files(
     window: WebviewWindow,
     app: AppHandle,
@@ -1073,16 +1121,15 @@ fn sync_finish(
         .find(|n| n["id"] == session.note_id)
         .ok_or("INVALID_NOTE")?;
     let synced = result["status"] == "synced";
-    note["syncState"] = json!(if note["content"] != session.content {
+    let same_attachments = note["attachments"].as_array().is_some_and(|items| items.len() == session.attachments.len() && items.iter().all(|item| item["id"].as_str().and_then(|id| session.attachments.get(id)) == Some(item)));
+    note["syncState"] = json!(if note["content"] != session.content || !same_attachments {
         "local"
     } else if synced {
         "synced"
     } else {
         "error"
     });
-    if synced {
-        result["note"] = note.clone();
-    }
+    result["note"] = note.clone();
     let saved = note.clone();
     store.replace(next)?;
     drop(store);
@@ -1225,6 +1272,8 @@ pub fn run() {
             list_notes,
             save_note,
             delete_note,
+            restore_note,
+            create_note_copy,
             get_window_context,
             set_window_title,
             open_note_window,
@@ -1239,6 +1288,7 @@ pub fn run() {
             list_sync_configs,
             save_sync_config,
             clear_sync_config,
+            check_feishu_connection,
             get_ai_config,
             save_ai_config,
             clear_ai_config,

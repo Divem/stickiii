@@ -33,6 +33,12 @@ export class NoteSaveQueue {
   }
 
   track(note: Note): void { this.latest.set(note.id, note); }
+  restore(note: Note): void {
+    this.deleted.delete(note.id);
+    this.stored.set(note.id, note);
+    this.latest.set(note.id, note);
+    this.onSaved(note);
+  }
   read(id: string): Note | undefined { return this.latest.get(id); }
   isStored(id: string): boolean { return this.stored.has(id); }
 

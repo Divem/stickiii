@@ -4,6 +4,7 @@ import { contentWithAttachmentImages, noteContentBlocks } from "../shared/markdo
 import type { Note, NoteAttachment } from "../shared/types.js";
 import NoteImage from "./NoteImage.js";
 import { t, type Locale } from "./i18n.js";
+import { continueMarkdownList, toggleMarkdownBold } from "./markdownEditing.js";
 
 export type NoteEditorHandle = {
   readonly selectionStart: number;
@@ -59,10 +60,29 @@ export default function InlineNoteContent({ note, hidden, readOnly, importing, l
       aria-label={t("noteContent", locale)} title={t("markdownHint", locale)}
       placeholder={index === 0 && !hasImages ? t("notePlaceholder", locale) : undefined}
       onFocus={() => { active.current = index; }} onSelect={() => { active.current = index; }}
+      onKeyDown={(event) => {
+        if (readOnly || event.nativeEvent.isComposing || event.repeat) return;
+        const editor = event.currentTarget;
+        const start = block.start + editor.selectionStart;
+        const end = block.start + editor.selectionEnd;
+        const modifier = navigator.platform.toLowerCase().includes("mac") ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+        const edit = event.key === "Enter" && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey
+          ? continueMarkdownList(content, start, end)
+          : modifier && event.key.toLowerCase() === "b" && !event.altKey && !event.shiftKey ? toggleMarkdownBold(content, start, end) : null;
+        if (!edit) return;
+        event.preventDefault();
+        editor.setSelectionRange(edit.start - block.start, edit.end - block.start);
+        // Native text insertion keeps this edit in the textarea's undo history.
+        if (!document.execCommand("insertText", false, edit.text)) {
+          editor.setRangeText(edit.text, edit.start - block.start, edit.end - block.start, "end");
+          onChange(content.slice(0, edit.start) + edit.text + content.slice(edit.end));
+        }
+        editor.setSelectionRange(edit.selectionStart - block.start, edit.selectionEnd - block.start);
+      }}
       onChange={(event) => {
         onChange(content.slice(0, block.start) + event.target.value + content.slice(block.end));
       }} /> : <div className="note-image-block" key={block.attachment.id}>
-        <NoteImage noteId={note.id} attachment={block.attachment} locale={locale} ready={!importing} onOpen={onOpenAttachment} />
+        <NoteImage noteId={note.id} attachment={block.attachment} locale={locale} ready={!importing && !hidden} compact onOpen={onOpenAttachment} />
         <button className="note-image-remove" disabled={readOnly} title={t("removeImage", locale)}
           aria-label={`${t("removeImage", locale)} ${block.attachment.name}`} onClick={() => onRemoveAttachment(block.attachment.id)}><X size={13} /></button>
       </div>)}

@@ -19,7 +19,7 @@ pub struct SyncSession {
     pub touched: Instant,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FeishuError {
     pub message: String,
@@ -248,6 +248,8 @@ pub struct Network {
     client: reqwest::Client,
     next_request: Instant,
     token: Option<Token>,
+    #[cfg(test)]
+    api_origin: String,
 }
 impl Network {
     pub fn new() -> Result<Self, String> {
@@ -260,6 +262,8 @@ impl Network {
             client,
             next_request: Instant::now(),
             token: None,
+            #[cfg(test)]
+            api_origin: "https://open.feishu.cn/open-apis".into(),
         })
     }
 
@@ -276,9 +280,13 @@ impl Network {
             self.next_request = Instant::now() + Duration::from_millis(400);
             let method = reqwest::Method::from_bytes(method.as_bytes())
                 .map_err(|_| FeishuError::new("permission", false))?;
+            #[cfg(not(test))]
+            let origin = "https://open.feishu.cn/open-apis";
+            #[cfg(test)]
+            let origin = self.api_origin.as_str();
             let mut request = self
                 .client
-                .request(method, format!("https://open.feishu.cn/open-apis{path}"))
+                .request(method, format!("{origin}{path}"))
                 .header("Content-Type", "application/json; charset=utf-8");
             if let Some(token) = token {
                 request = request.bearer_auth(token);
@@ -387,6 +395,29 @@ impl Network {
         self.raw(path, method, body, Some(&token)).await
     }
 
+    pub async fn check_connection(&mut self, config: &Value) -> Result<Value, FeishuError> {
+        let started = Instant::now();
+        self.ensure_token(config).await?;
+        if config["syncMode"] != "append" {
+            return Ok(json!({"status":"connected", "scope":"authentication", "latencyMs":started.elapsed().as_millis()}));
+        }
+        let (kind, target) = config["targetDocumentUrl"].as_str().and_then(parse_target).ok_or_else(|| FeishuError::new("target-required", false))?;
+        let document_id = if kind == "wiki" {
+            let node = self.request(config, &format!("/wiki/v2/spaces/get_node?token={target}"), "GET", &Value::Null).await?;
+            if node["data"]["node"]["obj_type"] != "docx" { return Err(FeishuError::new("unsupported-target", false)); }
+            node["data"]["node"]["obj_token"].as_str().filter(|id| is_id(id)).ok_or_else(|| FeishuError::new("invalid-target", false))?.to_owned()
+        } else { target };
+        let document = self.request(config, &format!("/docx/v1/documents/{document_id}"), "GET", &Value::Null).await?;
+        // Official SDK: drive.v1.permissionMember.Auth, action=edit. This checks
+        // the caller's edit permission without modifying the target document.
+        let permission = self.request(config, &format!("/drive/v1/permissions/{document_id}/members/auth?type=docx&action=edit"), "GET", &Value::Null).await?;
+        match permission["data"]["auth_result"].as_bool() {
+            Some(true) => Ok(json!({"status":"connected", "scope":"target", "title":document["data"]["document"]["title"], "latencyMs":started.elapsed().as_millis()})),
+            Some(false) => Err(FeishuError::new("permission", false)),
+            None => Err(FeishuError::new("invalid-response", false)),
+        }
+    }
+
     pub async fn upload_media(
         &mut self,
         config: &Value,
@@ -463,6 +494,73 @@ impl Network {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn connection_fixture(responses: Vec<Value>) -> (Network, std::thread::JoinHandle<Vec<String>>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let mut network = Network::new().unwrap();
+        network.api_origin = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let mut requests = Vec::new();
+            for response in responses {
+                let deadline = std::time::Instant::now() + Duration::from_secs(5);
+                let mut socket = loop {
+                    if let Ok((socket, _)) = listener.accept() { break socket; }
+                    assert!(std::time::Instant::now() < deadline, "missing fixture request");
+                    std::thread::sleep(Duration::from_millis(10));
+                };
+                socket.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+                let mut bytes = Vec::new();
+                let mut buffer = [0; 4096];
+                loop {
+                    let count = socket.read(&mut buffer).unwrap();
+                    assert!(count > 0); bytes.extend_from_slice(&buffer[..count]);
+                    if let Some(index) = bytes.windows(4).position(|b| b == b"\r\n\r\n") {
+                        let headers = String::from_utf8_lossy(&bytes[..index]);
+                        let length: usize = headers.lines().find_map(|line| line.to_ascii_lowercase().strip_prefix("content-length:").map(|value| value.trim().parse().unwrap())).unwrap_or(0);
+                        if bytes.len() >= index + 4 + length { break; }
+                    }
+                }
+                let body = response.to_string();
+                socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).unwrap();
+                requests.push(String::from_utf8(bytes).unwrap());
+            }
+            requests
+        });
+        (network, server)
+    }
+
+    #[test]
+    fn connection_check_authenticates_and_only_reads_wiki_document_and_edit_permission() {
+        let auth = json!({"code":0,"tenant_access_token":"fixture-token","expire":7200});
+        let wiki = json!({"code":0,"data":{"node":{"obj_type":"docx","obj_token":"Target"}}});
+        let document = json!({"code":0,"data":{"document":{"title":"Fixture"}}});
+        for permission in [json!(true), json!(false), Value::Null] {
+            let (mut network, server) = connection_fixture(vec![auth.clone(), wiki.clone(), document.clone(), json!({"code":0,"data":{"auth_result":permission}})]);
+            let config = json!({"appId":"fixture-app","appSecret":"fixture-secret","syncMode":"append","targetDocumentUrl":"https://test.feishu.cn/wiki/Wiki"});
+            let result = tauri::async_runtime::block_on(network.check_connection(&config));
+            match permission.as_bool() {
+                Some(true) => { let result = result.unwrap(); assert_eq!(result["scope"], "target"); assert_eq!(result["title"], "Fixture"); assert!(!result.to_string().contains("fixture-token")); },
+                Some(false) => assert_eq!(result.unwrap_err().message, "permission"),
+                None => assert_eq!(result.unwrap_err().message, "invalid-response"),
+            }
+            let requests = server.join().unwrap();
+            assert!(requests[0].starts_with("POST /auth/v3/tenant_access_token/internal "));
+            assert!(requests[1].starts_with("GET /wiki/v2/spaces/get_node?token=Wiki "));
+            assert!(requests[2].starts_with("GET /docx/v1/documents/Target "));
+            assert!(requests[3].starts_with("GET /drive/v1/permissions/Target/members/auth?type=docx&action=edit "));
+            assert!(requests[1..].iter().all(|request| !request.contains("fixture-secret")));
+        }
+    }
+
+    #[test]
+    fn create_mode_connection_check_reports_authentication_only_without_creating_documents() {
+        let (mut network, server) = connection_fixture(vec![json!({"code":0,"tenant_access_token":"fixture-token","expire":7200})]);
+        let result = tauri::async_runtime::block_on(network.check_connection(&json!({"appId":"fixture-app","appSecret":"fixture-secret","syncMode":"create"}))).unwrap();
+        assert_eq!(result["scope"], "authentication");
+        assert_eq!(server.join().unwrap().len(), 1);
+    }
     #[test]
     fn transport_is_scoped_to_feishu_documents_and_never_exposes_authentication() {
         let note = json!({"id":"note","content":"text", "feishu":{"appId":"app","targetKey":"app:create","documentId":"Known"}});

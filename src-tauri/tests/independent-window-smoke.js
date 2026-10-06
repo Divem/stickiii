@@ -14,6 +14,36 @@
     editor.dispatchEvent(new Event("input", { bubbles: true }));
   };
   const denied = async (fn) => { try { await fn(); return false; } catch { return true; } };
+  const checkAiComparison = async (noteId) => {
+    const originalPolish = window.desktopTabs.polishNote;
+    const before = (await window.desktopTabs.listNotes()).find((note) => note.id === noteId).content;
+    // Exercise the real renderer and native saves without paid model calls.
+    window.desktopTabs.polishNote = async () => ({ status: "polished", originalContent: before, content: before + "\nAI_QA_RESULT" });
+    try {
+      document.querySelector('button[aria-label="AI 润色"]').click();
+      const panel = await wait(() => document.querySelector(".ai-result-panel"), "AI comparison shown");
+      check((await window.desktopTabs.listNotes()).find((note) => note.id === noteId).content === before, "AI_PREVIEW_KEEPS_ORIGINAL");
+      check(panel.querySelector(".ai-diff-inline ins")?.textContent.includes("AI_QA_RESULT"), "AI_ADDITIONS_MARKED");
+      const tabs = panel.querySelectorAll(".ai-comparison-tabs button");
+      tabs[0].click();
+      await wait(() => panel.querySelector(".markdown-preview"), "AI original view");
+      check([...panel.querySelectorAll('input[type="checkbox"]')].every((item) => item.disabled), "AI_ORIGINAL_READ_ONLY");
+      tabs[1].click();
+      await wait(() => panel.querySelector(".markdown-preview")?.textContent.includes("AI_QA_RESULT"), "AI result view");
+      tabs[2].click();
+      await wait(() => panel.querySelector(".ai-diff-scroll"), "AI differences restored");
+      const action = (text) => [...document.querySelectorAll(".ai-result-panel .detail-panel-actions button")].find((button) => button.textContent === text);
+      action("替换原文").click();
+      await wait(async () => (await window.desktopTabs.listNotes()).find((note) => note.id === noteId).content.includes("AI_QA_RESULT"), "AI applied and saved");
+      document.querySelector('button[aria-label="更多操作"]').click();
+      const review = await wait(() => [...document.querySelectorAll(".actions-popover button")].find((button) => button.textContent === "查看 AI 结果"), "AI comparison after apply");
+      review.click();
+      const undo = await wait(() => action("撤销 AI 修改"), "AI comparison undo");
+      undo.click();
+      await wait(async () => (await window.desktopTabs.listNotes()).find((note) => note.id === noteId).content === before, "AI comparison undo saved");
+      return true;
+    } finally { window.desktopTabs.polishNote = originalPolish; }
+  };
   const checkAttachments = async (noteId) => {
     const zone = await wait(() => document.querySelector(".attachment-drop-zone"), "attachment drop zone");
     const editor = document.querySelector("textarea.note-content");
@@ -32,15 +62,28 @@
     await wait(() => !document.querySelector(".attachment-import-status"), "paste idle");
     const image = (await window.desktopTabs.listNotes()).find((note) => note.id === noteId).attachments.find((file) => file.mimeType === "image/png");
     check(image.previewDataUrl.startsWith("data:image/png;base64,") && image.name.startsWith("screenshot-"), "PASTE_PREVIEW");
-    const inline = await wait(() => document.querySelector(".inline-note-content .note-image-open img"), "inline image in edit mode");
+    const imageLink = await wait(() => document.querySelector(".inline-note-content .note-image-link"), "image link in edit mode");
+    check(imageLink.textContent === image.name && imageLink.getBoundingClientRect().height <= 32, "EDIT_IMAGE_COMPACT_LINK");
+    check(!document.querySelector(".inline-note-content img"), "EDIT_IMAGE_NOT_INLINE");
+    imageLink.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    const inline = await wait(() => document.querySelector(".note-image-hover-preview img"), "hover image preview");
     await wait(() => inline.complete && inline.naturalWidth > 0, "inline image decoded");
+    const hover = document.querySelector(".note-image-hover-preview").getBoundingClientRect();
+    check(hover.left >= 0 && hover.top >= 0 && hover.right <= innerWidth && hover.bottom <= innerHeight, "HOVER_IMAGE_WITHIN_WINDOW");
+    check(Math.abs(inline.getBoundingClientRect().width / inline.getBoundingClientRect().height - inline.naturalWidth / inline.naturalHeight) < 0.01, "HOVER_IMAGE_ASPECT_RATIO");
+    imageLink.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: editor }));
+    await wait(() => !document.querySelector(".note-image-hover-preview"), "hover preview dismissed");
+    imageLink.focus();
+    await wait(() => document.querySelector(".note-image-hover-preview"), "keyboard image preview");
+    imageLink.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await wait(() => !document.querySelector(".note-image-hover-preview"), "escape closes image preview");
+    editor.focus();
     const checkImageFit = (img, root, label) => {
       const rect = img.getBoundingClientRect();
       check(rect.width > 0 && rect.height > 0, `${label}_VISIBLE`);
       check(Math.abs(rect.width / rect.height - img.naturalWidth / img.naturalHeight) < 0.01, `${label}_ASPECT_RATIO`);
       check(rect.width <= root.clientWidth + 1 && rect.height <= root.clientHeight - 95, `${label}_TEXT_SPACE`);
     };
-    checkImageFit(inline, document.querySelector(".inline-note-content"), "EDIT_IMAGE_FIT");
     check(!document.querySelector(".attachment-strip .attachment-card img"), "IMAGE_NOT_ATTACHMENT_CARD");
     const textEditors = document.querySelectorAll("textarea.note-content");
     check(textEditors.length >= 2, "TEXT_BEFORE_AND_AFTER_IMAGE");
@@ -82,6 +125,9 @@
       check(await denied(() => window.desktopTabs.listShortcuts()), "CHILD_GLOBAL_SCOPE");
       check(await denied(() => window.desktopTabs.getAiConfig(true)), "CHILD_LEGACY_AI_CONFIG_DENIED");
       check(await denied(() => window.desktopTabs.listSyncConfigs(true)), "CHILD_LEGACY_SYNC_CONFIG_DENIED");
+      check(await denied(() => window.desktopTabs.restoreNote(context.noteId)), "CHILD_RESTORE_DENIED");
+      check(await denied(() => window.desktopTabs.checkFeishuConnection()), "CHILD_CONNECTION_CHECK_DENIED");
+      check(await denied(() => window.desktopTabs.createNoteCopy("qa-other-note", "forbidden")), "CHILD_COPY_NOTE_SCOPE");
       const editor = await wait(() => document.querySelector("textarea.note-content"), "child editor");
       check(!document.querySelector('button[aria-label="快速记录"]') && !document.querySelector('button[aria-label="查看便签"]'), "CHILD_MANAGEMENT_CONTROLS");
       if (context.noteId === "qa-window-a") {
@@ -93,6 +139,7 @@
         await wait(() => [...document.querySelectorAll("strong")].some((node) => node.textContent === "独立编辑预览"), "child preview");
         document.querySelector(".editor-mode-switch").click();
         await wait(() => !editor.hidden, "child return edit");
+        check(await checkAiComparison(context.noteId), "CHILD_AI_COMPARISON");
         document.querySelector('button[aria-label="置顶"]').click();
         await wait(() => document.querySelector(".pinned-badge.active"), "A pinned");
         // A failed close must preserve the window and its latest editable draft.
@@ -149,6 +196,13 @@
       await window.desktopTabs.deleteNote("qa-window-a");
       result.restoredDelete = !(await window.desktopTabs.getWindowContext()).openNoteIds.includes("qa-window-a");
     } else {
+      const copy = await window.desktopTabs.createNoteCopy("qa-window-b", "QA separate AI result");
+      result.copyPreservesOriginal = copy.id !== "qa-window-b" && copy.content === "QA separate AI result"
+        && (await window.desktopTabs.listNotes()).find((note) => note.id === "qa-window-b").content === "窗口 B\n原始便签";
+      await window.desktopTabs.deleteNote(copy.id);
+      const restoredCopy = await window.desktopTabs.restoreNote(copy.id);
+      result.nativeRestore = restoredCopy.id === copy.id && restoredCopy.content === copy.content;
+      await window.desktopTabs.deleteNote(copy.id);
       if (navigator.platform.startsWith("Mac")) {
         const button = await wait(() => document.querySelector('button[aria-label="查看便签"]:not(:disabled)'), "list button ready");
         await window.desktopTabs.setPinnedWindow(true);
@@ -227,6 +281,32 @@
         await wait(() => document.querySelector("textarea.note-content")?.value.startsWith(`窗口 ${key}\n`), "history row selects note after blur");
       }
       result.historyRowsAfterSearchBlur = true;
+      result.aiComparisonAndUndo = await checkAiComparison("qa-window-a");
+      const markdownEditor = document.querySelector("textarea.note-content");
+      const originalText = markdownEditor.value;
+      setContent(markdownEditor, "窗口 A\n- task");
+      await settle(); markdownEditor.focus();
+      markdownEditor.setSelectionRange(markdownEditor.value.length, markdownEditor.value.length);
+      markdownEditor.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+      await wait(() => markdownEditor.value === "窗口 A\n- task\n- ", "native Markdown list continuation");
+      check(document.execCommand("undo"), "NATIVE_MARKDOWN_UNDO_AVAILABLE");
+      await wait(() => markdownEditor.value === "窗口 A\n- task", "native list undo");
+      markdownEditor.setSelectionRange(7, 11);
+      const boldKey = () => new KeyboardEvent("keydown", { key: "b", metaKey: navigator.platform.startsWith("Mac"), ctrlKey: !navigator.platform.startsWith("Mac"), bubbles: true, cancelable: true });
+      markdownEditor.dispatchEvent(boldKey());
+      await wait(() => markdownEditor.value === "窗口 A\n- **task**", "native bold selection");
+      markdownEditor.dispatchEvent(boldKey());
+      await wait(() => markdownEditor.value === "窗口 A\n- task", "native bold toggle back");
+      setContent(markdownEditor, "窗口 A\n\n- [ ] 原生待办\n\n- [x] 已完成");
+      await settle(); document.querySelector(".editor-mode-switch").click();
+      const taskCheckbox = await wait(() => document.querySelector('.markdown-preview input[type="checkbox"]:not(:disabled)'), "native editable task");
+      taskCheckbox.click();
+      await wait(() => markdownEditor.value.includes("- [x] 原生待办"), "native task updates source");
+      document.querySelector(".editor-mode-switch").click();
+      await wait(() => !markdownEditor.hidden, "native task returns to edit");
+      setContent(markdownEditor, originalText);
+      await wait(async () => (await window.desktopTabs.listNotes()).find((note) => note.id === "qa-window-a").content === originalText, "native Markdown original restored");
+      result.markdownListUndoBoldAndTasks = true;
       result.mainAttachmentImport = await checkAttachments("qa-window-a");
       // Use the actual main menu to open A rather than bypassing React handoff.
       document.querySelector('button[aria-label="更多操作"]').click();

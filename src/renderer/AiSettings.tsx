@@ -1,20 +1,24 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, LoaderCircle, Sparkles } from "lucide-react";
 import type { AiConfig, AiConnectionResult } from "../shared/types.js";
 import { aiConnectionErrorMessages, t, type Locale, type MessageKey } from "./i18n.js";
 
-export default function AiSettings({ config, locale, onClose, onSaved, onCleared }: {
+export default function AiSettings({ config, locale, onClose, onSaved, onCleared, draft, onDraftChange }: {
   config: AiConfig | null; locale: Locale; onClose: () => void;
   onSaved: (config: AiConfig) => void; onCleared: () => void;
+  draft: { baseUrl: string; model: string } | null;
+  onDraftChange: (draft: { baseUrl: string; model: string }) => void;
 }) {
-  const [baseUrl, setBaseUrl] = useState(config?.baseUrl ?? "https://api.openai.com/v1");
-  const [model, setModel] = useState(config?.model ?? "");
+  const [baseUrl, setBaseUrl] = useState(draft?.baseUrl ?? config?.baseUrl ?? "https://api.openai.com/v1");
+  const [model, setModel] = useState(draft?.model ?? config?.model ?? "");
   const [apiKey, setApiKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<AiConnectionResult | null>(null);
   const [error, setError] = useState<MessageKey | null>(null);
+  const resultRef = useRef<HTMLParagraphElement>(null);
   const lock = useRef(false);
+  useEffect(() => { if (testResult) resultRef.current?.scrollIntoView({ block: "center" }); }, [testResult]);
 
   async function submit(clear = false): Promise<void> {
     if (lock.current) return;
@@ -49,10 +53,10 @@ export default function AiSettings({ config, locale, onClose, onSaved, onCleared
       {config && <span className="configured-label">{t("configured", locale)}</span>}</div>
     <p className="credential-hint">{t("aiConfigHint", locale)}</p>
     <label className="credential-field"><span>{t("aiBaseUrl", locale)}</span>
-      <input type="url" required disabled={busy} value={baseUrl} autoComplete="off" onChange={(event) => { setBaseUrl(event.target.value); edited(); }} /></label>
+      <input type="url" required disabled={busy} value={baseUrl} autoComplete="off" onChange={(event) => { setBaseUrl(event.target.value); onDraftChange({ baseUrl: event.target.value, model }); edited(); }} /></label>
     <p className="credential-hint">{t("aiBaseUrlHint", locale)}</p>
     <label className="credential-field"><span>{t("aiModel", locale)}</span>
-      <input required disabled={busy} value={model} autoComplete="off" placeholder={t("aiModelPlaceholder", locale)} onChange={(event) => { setModel(event.target.value); edited(); }} /></label>
+      <input required disabled={busy} value={model} autoComplete="off" placeholder={t("aiModelPlaceholder", locale)} onChange={(event) => { setModel(event.target.value); onDraftChange({ baseUrl, model: event.target.value }); edited(); }} /></label>
     <label className="credential-field"><span>{t("aiApiKey", locale)}</span>
       <input type="password" disabled={busy} value={apiKey} autoComplete="new-password" spellCheck={false}
         placeholder={t(config ? "aiKeySavedPlaceholder" : "aiKeyPlaceholder", locale)} onChange={(event) => { setApiKey(event.target.value); edited(); }} /></label>
@@ -61,7 +65,7 @@ export default function AiSettings({ config, locale, onClose, onSaved, onCleared
     <div className="ai-test-section"><button type="button" className="ai-test-button" disabled={busy} aria-busy={testing} onClick={() => void testConnection()}>
       {testing && <LoaderCircle size={12} className="spin" />}{t(testing ? "aiTestingConnection" : "aiTestConnection", locale)}</button>
       <p className="credential-hint">{t("aiTestHint", locale)}</p>
-      {testMessage && <p className={`credential-hint ai-test-result ${testResult?.status === "error" ? "ai-config-error" : ""}`}
+      {testMessage && <p ref={resultRef} className={`credential-hint ai-test-result ${testResult?.status === "error" ? "ai-config-error" : ""}`}
         role={testResult?.status === "error" ? "alert" : "status"}>{testMessage}</p>}</div>
     <div className="credential-actions"><button type="button" className="secondary-action" disabled={busy} onClick={onClose}>{t("cancel", locale)}</button>
       <button type="submit" className="primary-action" disabled={busy}>{busy && !testing && <LoaderCircle size={12} className="spin" />}{t("saveConfig", locale)}</button></div>

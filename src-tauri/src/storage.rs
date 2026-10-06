@@ -77,7 +77,7 @@ fn builtin_notes() -> Vec<Value> {
         }),
         json!({
             "id": "builtin-how-to-use",
-            "content": "# 贴贴便签｜使用方法\n\n## 1. 快速记录\n\n1. 在任意应用中按 `Command/Ctrl + Shift + Space` 唤起贴贴便签。\n2. 直接在正文区域输入内容，停止输入后会自动保存。\n3. 再次按快捷键可以隐藏窗口；关闭窗口也只会隐藏，不会退出应用。\n\n## 2. 编辑和整理\n\n- 第一行会作为便签标题显示，正文支持 Markdown。\n- 点击顶部的预览按钮查看排版，再切回编辑继续修改。\n- 点击加号新建便签，点击便签列表或页码在记录之间切换。\n- 使用主题和透明度设置，让便签适合你的桌面。\n\n## 3. 添加附件\n\n点击底部的附件按钮，从系统文件选择器添加图片或文件。附件会先复制到贴贴便签的应用数据目录，图片可以直接预览，其他文件可以交给系统打开。\n\n## 4. 同步到飞书\n\n1. 打开“设置 → 飞书”，填写 App ID、App Secret 和协作者邮箱。\n2. 选择“每条笔记创建新文档”，或粘贴目标文档链接并选择追加模式。\n3. 回到要同步的便签，点击底部的飞书按钮并确认结果。\n\n同步是手动触发的；本地图片会作为图片块上传，其他文件会作为附件块上传，Markdown 中的网络图片保留为链接。没有配置飞书时，记录仍可正常本地使用。\n\n## 5. 常用快捷键\n\n- `Command/Ctrl + Shift + Space`：唤起 / 隐藏便签\n- `Command/Ctrl + Shift + N`：新建便签\n- `Command/Ctrl + Alt + Left/Right`：上一条 / 下一条便签\n\n快捷键可以在“更多 → 设置 → 全局快捷键”中修改。\n\n## 联系方式\n\n使用中遇到问题或想提出建议，请联系：**imyuanwen@gmail.com**。",
+            "content": "# 贴贴便签｜使用方法\n\n## 1. 快速记录\n\n1. 在任意应用中按 `Command/Ctrl + Shift + Space` 唤起贴贴便签。\n2. 直接在正文区域输入内容，停止输入后会自动保存。\n3. 再次按快捷键可以隐藏窗口；关闭窗口也只会隐藏，不会退出应用。\n\n## 2. 编辑和整理\n\n- 第一行会作为便签标题显示，正文支持 Markdown。\n- 点击顶部的预览按钮查看排版，再切回编辑继续修改。\n- 点击加号新建便签，点击便签列表或页码在记录之间切换。\n- 使用主题和透明度设置，让便签适合你的桌面。\n\n## 3. 添加附件\n\n点击底部的附件按钮，从系统文件选择器添加图片或文件。附件会先复制到贴贴便签的应用数据目录，图片可以直接预览，其他文件可以交给系统打开。\n\n## 4. 同步到飞书\n\n1. 打开“设置 → 飞书”，填写 App ID、App Secret 和协作者邮箱。\n2. 选择“每条笔记创建新文档”，或粘贴目标文档链接并选择追加模式。\n3. 回到要同步的便签，点击底部的飞书按钮并确认结果。\n\n同步是手动触发的；本地图片会作为图片块上传，其他文件会作为附件块上传，Markdown 中的网络图片保留为链接。没有配置飞书时，记录仍可正常本地使用。\n\n## 5. 常用快捷键\n\n- `Command/Ctrl + Shift + Space`：唤起 / 隐藏便签\n- `Command/Ctrl + Shift + N`：新建便签\n- `Command/Ctrl + Alt + Left/Right`：上一条 / 下一条便签\n\n快捷键可以在底部“设置 → 全局快捷键”中修改。\n\n## 联系方式\n\n使用中遇到问题或想提出建议，请联系：**imyuanwen@gmail.com**。",
             "attachments": [],
             "createdAt": now,
             "updatedAt": now,
@@ -132,6 +132,7 @@ pub struct Store {
     pub root: PathBuf,
     pub notes: Vec<Value>,
     deleted: HashSet<String>,
+    last_deleted: Option<(Value, std::time::Instant)>,
 }
 
 impl Store {
@@ -178,7 +179,7 @@ impl Store {
         for note in &mut notes {
             normalize_note(note)?;
         }
-        if notes.is_empty() {
+        if notes.is_empty() && !notes_path.exists() {
             notes = builtin_notes();
             atomic_json(&notes_path, &notes)?;
         }
@@ -186,6 +187,7 @@ impl Store {
             root,
             notes,
             deleted: HashSet::new(),
+            last_deleted: None,
         })
     }
 
@@ -227,7 +229,7 @@ impl Store {
                 object.insert(key.into(), value.clone());
             }
         }
-        let same_content = previous.is_some_and(|n| n["content"] == object["content"]);
+        let same_content = previous.is_some_and(|n| n["content"] == object["content"] && n["attachments"] == object["attachments"]);
         object.insert(
             "createdAt".into(),
             previous
@@ -250,6 +252,7 @@ impl Store {
     }
 
     pub fn delete(&mut self, id: &str) -> Result<(), String> {
+        let snapshot = self.notes.iter().find(|note| note["id"] == id).cloned();
         self.replace(
             self.notes
                 .iter()
@@ -258,7 +261,20 @@ impl Store {
                 .collect(),
         )?;
         self.deleted.insert(id.to_owned());
+        self.last_deleted = snapshot.map(|note| (note, std::time::Instant::now()));
         Ok(())
+    }
+
+    pub fn restore(&mut self, id: &str) -> Result<Value, String> {
+        let (note, deleted_at) = self.last_deleted.as_ref().ok_or("RESTORE_UNAVAILABLE")?;
+        if note["id"] != id || deleted_at.elapsed().as_secs() >= 10 { return Err("RESTORE_UNAVAILABLE".into()); }
+        let restored = note.clone();
+        let mut next = vec![restored.clone()];
+        next.extend(self.notes.iter().cloned());
+        self.replace(next)?;
+        self.deleted.remove(id);
+        self.last_deleted = None;
+        Ok(restored)
     }
 
     pub fn ensure_importable(&self, note_id: &str) -> Result<(), String> {
@@ -466,6 +482,31 @@ mod tests {
     }
 
     #[test]
+    fn undo_restores_only_the_last_deleted_native_snapshot_and_expires() {
+        let root = tempfile::tempdir().unwrap();
+        let mut store = Store::load(root.path().into(), None).unwrap();
+        let saved = store.save(note()).unwrap();
+        store.delete("one").unwrap();
+        assert!(store.restore("other").is_err());
+        assert_eq!(store.restore("one").unwrap(), saved);
+        assert!(store.restore("one").is_err());
+        assert_eq!(store.save(saved.clone()).unwrap(), saved);
+        store.delete("one").unwrap();
+        store.last_deleted.as_mut().unwrap().1 = std::time::Instant::now() - std::time::Duration::from_secs(11);
+        assert!(store.restore("one").is_err());
+        assert!(store.save(saved).is_err());
+    }
+
+    #[test]
+    fn existing_empty_libraries_and_empty_legacy_migrations_stay_empty() {
+        let old = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        atomic_json(&old.path().join("notes.json"), &Vec::<Value>::new()).unwrap();
+        assert!(Store::load(root.path().into(), Some(old.path())).unwrap().notes.is_empty());
+        assert!(Store::load(root.path().into(), None).unwrap().notes.is_empty());
+    }
+
+    #[test]
     fn fresh_store_seeds_two_product_notes_once() {
         let temp = tempfile::tempdir().unwrap();
         let store = Store::load(temp.path().into(), None).unwrap();
@@ -481,9 +522,7 @@ mod tests {
         reopened.delete("builtin-product-intro").unwrap();
         reopened.delete("builtin-how-to-use").unwrap();
         let after_delete = Store::load(temp.path().into(), None).unwrap();
-        assert_eq!(after_delete.notes.len(), 2);
-        assert_eq!(after_delete.notes[0]["id"], "builtin-product-intro");
-        assert_eq!(after_delete.notes[1]["id"], "builtin-how-to-use");
+        assert!(after_delete.notes.is_empty());
     }
 
     #[test]
@@ -509,7 +548,7 @@ mod tests {
         store.delete("one").unwrap();
         let after_delete = Store::load(new.path().into(), Some(old.path())).unwrap();
         assert!(!after_delete.notes.iter().any(|item| item["id"] == "one"));
-        assert_eq!(after_delete.notes.len(), 2);
+        assert!(after_delete.notes.is_empty());
     }
 
     #[test]

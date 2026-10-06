@@ -19,6 +19,8 @@ declare global {
       listNotes(): Promise<Note[]>;
       saveNote(note: Note): Promise<Note>;
       deleteNote(noteId: string): Promise<void>;
+      restoreNote(noteId: string): Promise<Note>;
+      createNoteCopy(noteId: string, content: string): Promise<Note>;
       pickFiles(): Promise<PickedAttachment[]>;
       importAttachment(noteId: string, file: File, imageOnly: boolean): Promise<PickedAttachment>;
       attachmentPreview(noteId: string, attachmentId: string): Promise<string>;
@@ -28,6 +30,7 @@ declare global {
       listSyncConfigs(loadSaved?: boolean): Promise<SyncProviderConfig[]>;
       saveSyncConfig(input: SyncProviderConfigInput): Promise<SyncConfigResult>;
       clearSyncConfig(provider: SyncProviderId): Promise<SyncConfigResult>;
+      checkFeishuConnection(): Promise<import("../shared/types").FeishuConnectionResult>;
       getAiConfig(loadSaved?: boolean): Promise<AiConfig | null>;
       saveAiConfig(input: AiConfigInput): Promise<AiConfigResult>;
       clearAiConfig(): Promise<AiConfigResult>;

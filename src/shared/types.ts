@@ -98,17 +98,21 @@ export type Note = {
 
 export type PickedAttachment = NoteAttachment;
 
-export type SyncResult =
+export type SyncResult = (
   | { status: "not-configured"; provider: SyncProviderId }
   | { status: "synced"; provider: SyncProviderId; remoteUrl?: string; warnings?: SyncWarning[]; note?: Note }
   | { status: "conflict"; provider: SyncProviderId; remoteUrl: string; scope?: "chapter" }
   | { status: "not-implemented"; provider: SyncProviderId }
-  | { status: "error"; provider: SyncProviderId; message: string; remoteUrl?: string; apiCode?: number };
+  | { status: "error"; provider: SyncProviderId; message: string; remoteUrl?: string; apiCode?: number }) & { note?: Note };
 
 export type SyncConfigResult =
   | { status: "saved"; provider: SyncProviderId }
   | { status: "cleared"; provider: SyncProviderId }
   | { status: "unavailable" | "invalid" | "error" };
+
+export type FeishuConnectionResult =
+  | { status: "connected"; scope: "authentication" | "target"; latencyMs: number; title?: string }
+  | { status: "error"; message: string; apiCode?: number };
 
 export type AiConfig = {
   baseUrl: string;
