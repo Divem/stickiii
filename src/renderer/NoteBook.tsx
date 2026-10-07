@@ -1,10 +1,11 @@
 import { ChevronLeft, ChevronRight, Paperclip } from "lucide-react";
-import { memo, useLayoutEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { lazy, memo, Suspense, useCallback, useLayoutEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { Note } from "../shared/types.js";
 import { getNoteTitle, isNoteThemeId } from "../shared/notes.js";
-import MarkdownPreview from "./MarkdownPreview.js";
 import InlineNoteContent, { type NoteEditorHandle } from "./InlineNoteContent.js";
 import { t, type Locale } from "./i18n.js";
+
+const MarkdownPreview = lazy(() => import("./MarkdownPreview.js"));
 
 export type PageTurnDirection = "previous" | "next";
 export type PageTurn = {
@@ -60,12 +61,17 @@ export default function NoteBook({ previousNote, nextNote, currentIndex, total, 
     onShowNotes();
   }
 
-  useLayoutEffect(() => {
-    if (!turn || !pageRef.current || !outgoingRef.current) return;
+  const restoreOutgoingScroll = useCallback(() => {
+    if (!turn) return;
     const outgoingContent = outgoingContentRef.current;
     const scroller = turn.mode === "preview" ? outgoingContent?.querySelector(".markdown-preview")
       : outgoingContent?.querySelector(".inline-note-content.has-images") ?? outgoingContent;
     if (scroller) scroller.scrollTop = turn.scroll;
+  }, [turn]);
+
+  useLayoutEffect(() => {
+    if (!turn || !pageRef.current || !outgoingRef.current) return;
+    restoreOutgoingScroll();
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       onTurnEnd(turn.sequence);
       return;
@@ -83,7 +89,7 @@ export default function NoteBook({ previousNote, nextNote, currentIndex, total, 
     void outgoing.finished.then(() => onTurnEnd(turn.sequence)).catch(() => {});
     // A new click can interrupt the animation immediately without remounting the editor.
     return () => { incoming.cancel(); outgoing.cancel(); };
-  }, [turn, onTurnEnd]);
+  }, [turn, onTurnEnd, restoreOutgoingScroll]);
 
   const pageLabel = t("notePagePosition", locale).replace("{current}", String(currentIndex + 1)).replace("{total}", String(total));
   return <div className={`note-book ${hasNeighbors ? "has-neighbors" : ""}`}>
@@ -93,7 +99,7 @@ export default function NoteBook({ previousNote, nextNote, currentIndex, total, 
     {turn && <div key={turn.sequence} ref={outgoingRef} className={`turning-page turning-page-${turn.direction}`}
       data-page-theme={isNoteThemeId(turn.note.theme) ? turn.note.theme : "paper"} aria-hidden="true" inert>
       <div ref={outgoingContentRef} className={`turning-page-content ${turn.mode === "edit" ? "turning-page-text" : ""}`}>
-        {turn.mode === "preview" ? <MarkdownPreview content={turn.note.content} noteId={turn.note.id} attachments={turn.note.attachments} locale={locale} onOpenLink={() => {}} />
+        {turn.mode === "preview" ? <Suspense fallback={null}><MarkdownPreview content={turn.note.content} noteId={turn.note.id} attachments={turn.note.attachments} locale={locale} onOpenLink={() => {}} onReady={restoreOutgoingScroll} /></Suspense>
           : turn.note.attachments.some((attachment) => attachment.mimeType.startsWith("image/"))
             ? <InlineNoteContent note={turn.note} hidden={false} readOnly importing={false} locale={locale} editorRef={outgoingEditorRef}
               onChange={() => {}} onOpenAttachment={() => {}} onRemoveAttachment={() => {}} /> : turn.note.content}

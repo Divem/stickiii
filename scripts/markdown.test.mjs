@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import MarkdownPreview from '../src/renderer/MarkdownPreview.tsx';
-import { markdownForFeishu, markdownTitle, externalWebUrl, attachmentImageMarkdown, contentWithAttachmentImages, noteContentBlocks, removeAttachmentImages } from '../src/shared/markdown.ts';
+import { markdownTitle, externalWebUrl, attachmentImageMarkdown, contentWithAttachmentImages, noteContentBlocks, removeAttachmentImages } from '../src/shared/markdown.ts';
+
+import { markdownForFeishu } from '../src/shared/feishuMarkdown.ts';
 
 const render = (content) => renderToStaticMarkup(createElement(MarkdownPreview, { content, locale: 'zh', onOpenLink: () => {} }));
 

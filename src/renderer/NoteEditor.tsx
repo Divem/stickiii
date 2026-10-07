@@ -1,20 +1,24 @@
 import { File, FileText, Image as ImageIcon, X } from "lucide-react";
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { lazy, memo, Suspense, useEffect, useRef, useState, type RefObject } from "react";
 import type { Note, NoteAttachment } from "../shared/types.js";
-import MarkdownPreview from "./MarkdownPreview.js";
 import { t, type Locale } from "./i18n.js";
 import { clipboardImages } from "./attachmentImport.js";
 import type { ImageInsertion } from "./attachmentImport.js";
 import InlineNoteContent, { type NoteEditorHandle } from "./InlineNoteContent.js";
 import { contentWithAttachmentImages } from "../shared/markdown.js";
 
-export default function NoteEditor({ note, preview, readOnly, importing, importDisabled, locale, editorRef, previewRef, onChange, onOpenLink, onOpenAttachment, onRemoveAttachment, onImportFiles, onImportRejected }: {
+const MarkdownPreview = lazy(() => import("./MarkdownPreview.js"));
+
+export default memo(function NoteEditor({ note, preview, readOnly, importing, importDisabled, locale, autoSize = false, textSize, editorRef, previewRef, onChange, onOpenLink, onOpenAttachment, onRemoveAttachment, onImportFiles, onImportRejected, onPreviewReady }: {
   note: Note; preview: boolean; readOnly: boolean; locale: Locale;
   importing: boolean; importDisabled: boolean;
+  autoSize?: boolean;
+  textSize?: number;
   editorRef: RefObject<NoteEditorHandle | null>; previewRef: RefObject<HTMLDivElement | null>;
   onChange: (content: string) => void; onOpenLink: (url: string) => void;
   onOpenAttachment: (attachment: NoteAttachment) => void; onRemoveAttachment: (id: string) => void;
   onImportFiles: (files: File[], imageOnly: boolean, insertion?: ImageInsertion) => void; onImportRejected: (directory: boolean) => void;
+  onPreviewReady: () => void;
 }) {
   const [dragging, setDragging] = useState(false);
   const dragDepth = useRef(0);
@@ -67,12 +71,12 @@ export default function NoteEditor({ note, preview, readOnly, importing, importD
     const files = Array.from(event.dataTransfer.files);
     if (files.length) onImportFiles(files, false, imageInsertion());
   }}>
-    <InlineNoteContent key={note.id} note={note} hidden={preview} readOnly={readOnly} importing={importing} locale={locale}
+    <InlineNoteContent key={note.id} note={note} hidden={preview} readOnly={readOnly} importing={importing} locale={locale} autoSize={autoSize} textSize={textSize}
       editorRef={editorRef} onChange={onChange} onOpenAttachment={onOpenAttachment} onRemoveAttachment={onRemoveAttachment} />
-    {preview && <MarkdownPreview previewRef={previewRef} noteId={note.id} attachments={note.attachments} imageReady={!importing}
-      content={note.content} locale={locale} onOpenLink={onOpenLink} onOpenAttachment={onOpenAttachment} onChange={readOnly ? undefined : onChange} />}
+    {preview && <Suspense fallback={<p role="status">{t("viewLoading", locale)}</p>}><MarkdownPreview previewRef={previewRef} noteId={note.id} attachments={note.attachments} imageReady={!importing}
+      content={note.content} locale={locale} onOpenLink={onOpenLink} onOpenAttachment={onOpenAttachment} onChange={readOnly ? undefined : onChange} onReady={onPreviewReady} /></Suspense>}
     {files.length > 0 && <div className="attachment-strip">{files.map((attachment) => (
-      <div className="attachment-card" key={attachment.id}>
+      <div className="attachment-card" data-attachment-id={attachment.id} key={attachment.id}>
         <button className="attachment-open-button" onClick={() => onOpenAttachment(attachment)} title={attachment.name}>
           {attachment.previewDataUrl ? <img src={attachment.previewDataUrl} alt={attachment.name} loading="lazy" />
             : <span className="attachment-icon">{attachment.mimeType.startsWith("image/") ? <ImageIcon size={16} />
@@ -87,4 +91,4 @@ export default function NoteEditor({ note, preview, readOnly, importing, importD
     {dragging && <div className="attachment-drop-hint" role="status"><ImageIcon size={24} /><strong>{t("dropAttachments", locale)}</strong><span>{t("dropAttachmentsHint", locale)}</span></div>}
     {importing && <span className="attachment-import-status" role="status">{t("importingFiles", locale)}</span>}
   </div>;
-}
+});

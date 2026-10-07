@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { noteSearchSnippet } from "../src/renderer/noteSearch.ts";
+import { noteMatchesSearch, noteSearchMatches, noteSearchSnippet } from "../src/renderer/noteSearch.ts";
 import { continueMarkdownList, toggleMarkdownBold, toggleMarkdownTask } from "../src/renderer/markdownEditing.ts";
 import { NoteSaveQueue } from "../src/renderer/noteSaveQueue.ts";
 
@@ -12,6 +12,18 @@ test("search snippets show body matches and preserve original case", () => {
   const long = noteSearchSnippet(`${"前".repeat(80)}命中${"后".repeat(80)}`, "命中");
   assert.equal(long.before, `…${"前".repeat(8)}`);
   assert.equal(long.after, `${"后".repeat(40)}…`);
+});
+
+test("literal search returns source positions and matches attachment names without regex interpretation", () => {
+  const body = "标题\n😀 Test.+\nTEST.+";
+  const matches = noteSearchMatches(body, "test.+");
+  assert.deepEqual(matches.map(({ start, end }) => body.slice(start, end)), ["Test.+", "TEST.+"]);
+  assert.equal(matches[0].start, 6);
+  assert.deepEqual(noteSearchMatches(body, ""), []);
+  const note = { content: body, attachments: [{ name: "会议截图.PNG" }] };
+  assert.equal(noteMatchesSearch(note, "截图.png"), true);
+  assert.equal(noteMatchesSearch(note, "test.+"), true);
+  assert.equal(noteMatchesSearch(note, "missing"), false);
 });
 
 test("Markdown list editing handles tasks, ordered lists, empty items and code fences", () => {
@@ -42,4 +54,13 @@ test("restored notes leave the queue tombstone and can accept subsequent externa
   queue.restore(note); assert.equal(queue.isDirty(note.id), false);
   queue.acceptExternal({ ...note, content: "Later", updatedAt: "2026-10-06" });
   assert.equal(queue.read(note.id).content, "Later");
+});
+
+test("favorite and archive changes are saved even when note text and attachments stay unchanged", async () => {
+  const note = { id: "a", content: "Original", attachments: [], createdAt: "old", updatedAt: "old", syncState: "synced" };
+  const writes = []; const queue = new NoteSaveQueue(async (value) => { writes.push(value); return value; });
+  queue.seed([note]); queue.track({ ...note, favorite: true }); await queue.flush();
+  queue.track({ ...queue.read("a"), archived: true }); await queue.flush();
+  assert.equal(writes.length, 2); assert.equal(writes[0].favorite, true); assert.equal(writes[1].archived, true);
+  assert.equal(writes[1].syncState, "synced");
 });

@@ -1,6 +1,6 @@
-import { useImperativeHandle, useLayoutEffect, useMemo, useRef, type RefObject } from "react";
+import { useCallback, useImperativeHandle, useLayoutEffect, useMemo, useRef, type RefObject } from "react";
 import { X } from "lucide-react";
-import { contentWithAttachmentImages, noteContentBlocks } from "../shared/markdown.js";
+import { prepareNoteContent } from "../shared/markdown.js";
 import type { Note, NoteAttachment } from "../shared/types.js";
 import NoteImage from "./NoteImage.js";
 import { t, type Locale } from "./i18n.js";
@@ -12,25 +12,29 @@ export type NoteEditorHandle = {
   scrollTop: number;
   focus: (options?: FocusOptions) => void;
   setSelectionRange: (start: number, end: number) => void;
+  revealRange: (start: number, end: number) => void;
 };
 
-export default function InlineNoteContent({ note, hidden, readOnly, importing, locale, editorRef, onChange, onOpenAttachment, onRemoveAttachment }: {
+export default function InlineNoteContent({ note, hidden, readOnly, importing, locale, autoSize = false, textSize, editorRef, onChange, onOpenAttachment, onRemoveAttachment }: {
   note: Note; hidden: boolean; readOnly: boolean; importing: boolean; locale: Locale;
+  autoSize?: boolean;
+  textSize?: number;
   editorRef: RefObject<NoteEditorHandle | null>;
   onChange: (content: string) => void;
   onOpenAttachment: (attachment: NoteAttachment) => void; onRemoveAttachment: (id: string) => void;
 }) {
-  const content = useMemo(() => contentWithAttachmentImages(note.content, note.attachments), [note.content, note.attachments]);
-  const blocks = useMemo(() => noteContentBlocks(content, note.attachments), [content, note.attachments]);
+  const { content, blocks } = useMemo(() => prepareNoteContent(note.content, note.attachments), [note.content, note.attachments]);
   const root = useRef<HTMLDivElement>(null);
   const editors = useRef(new Map<number, HTMLTextAreaElement>());
   const active = useRef(0);
+  const measurements = useRef(new WeakMap<HTMLTextAreaElement, { value: string; width: number; textSize?: number }>());
   const hasImages = blocks.some((block) => block.type === "image");
+  const scroller = () => autoSize ? root.current?.closest<HTMLElement>(".note-book") : hasImages ? root.current : editors.current.get(0);
   useImperativeHandle(editorRef, () => ({
     get selectionStart() { const block = blocks[active.current]; return (block?.start ?? 0) + (editors.current.get(active.current)?.selectionStart ?? 0); },
     get selectionEnd() { const block = blocks[active.current]; return (block?.start ?? 0) + (editors.current.get(active.current)?.selectionEnd ?? 0); },
-    get scrollTop() { return hasImages ? root.current?.scrollTop ?? 0 : editors.current.get(0)?.scrollTop ?? 0; },
-    set scrollTop(value) { const target = hasImages ? root.current : editors.current.get(0); if (target) target.scrollTop = value; },
+    get scrollTop() { return scroller()?.scrollTop ?? 0; },
+    set scrollTop(value) { const target = scroller(); if (target) target.scrollTop = value; },
     focus(options) { (editors.current.get(active.current) ?? editors.current.get(0))?.focus(options); },
     setSelectionRange(start, end) {
       let index = blocks.findIndex((block) => block.type === "text" && start <= block.end);
@@ -39,20 +43,51 @@ export default function InlineNoteContent({ note, hidden, readOnly, importing, l
       active.current = index;
       editors.current.get(index)?.setSelectionRange(Math.max(0, start - block.start), Math.max(0, end - block.start));
     },
-  }), [blocks, hasImages]);
+    revealRange(start, end) {
+      const index = blocks.findIndex((block) => block.type === "text" && start >= block.start && start <= block.end);
+      const block = blocks[index];
+      const editor = editors.current.get(index);
+      if (!editor || !block) return;
+      active.current = index;
+      editor.focus({ preventScroll: true });
+      editor.setSelectionRange(start - block.start, end - block.start);
+      const style = getComputedStyle(editor);
+      const mirror = document.createElement("div");
+      Object.assign(mirror.style, { position: "fixed", visibility: "hidden", whiteSpace: "pre-wrap", overflowWrap: "break-word", width: `${editor.clientWidth}px`, font: style.font, lineHeight: style.lineHeight, letterSpacing: style.letterSpacing, padding: style.padding, border: "0" });
+      const mark = document.createElement("span");
+      mark.textContent = editor.value.slice(start - block.start, end - block.start) || " ";
+      mirror.append(document.createTextNode(editor.value.slice(0, start - block.start)), mark, document.createTextNode(editor.value.slice(end - block.start)));
+      document.body.append(mirror);
+      if (hasImages && root.current) root.current.scrollTop = editor.offsetTop - root.current.offsetTop + mark.offsetTop - root.current.clientHeight / 2;
+      else editor.scrollTop = mark.offsetTop - editor.clientHeight / 2;
+      mirror.remove();
+    },
+  }), [blocks, hasImages, autoSize]);
+  const resize = useCallback(() => {
+    if (!hasImages && !autoSize) {
+      for (const editor of editors.current.values()) { editor.style.height = ""; measurements.current.delete(editor); }
+      return;
+    }
+    const changed = [...editors.current.values()].filter((editor) => {
+      const width = editor.clientWidth;
+      const previous = measurements.current.get(editor);
+      if (previous?.value === editor.value && previous.width === width && previous.textSize === textSize) return false;
+      measurements.current.set(editor, { value: editor.value, width, textSize });
+      return true;
+    });
+    const top = root.current?.scrollTop ?? 0;
+    for (const editor of changed) editor.style.height = "0px";
+    const heights = changed.map((editor) => Math.max(28, editor.scrollHeight));
+    changed.forEach((editor, index) => { editor.style.height = `${heights[index]}px`; });
+    if (root.current) root.current.scrollTop = top;
+  }, [hasImages, autoSize, textSize]);
+  useLayoutEffect(() => { if (!hidden) resize(); }, [blocks, hidden, resize]);
   useLayoutEffect(() => {
     if (hidden) return;
-    const resize = () => {
-      for (const editor of editors.current.values()) {
-        editor.style.height = hasImages ? "0px" : "";
-        if (hasImages) editor.style.height = `${Math.max(28, editor.scrollHeight)}px`;
-      }
-    };
-    resize();
     const observer = new ResizeObserver(resize);
     if (root.current) observer.observe(root.current);
     return () => observer.disconnect();
-  }, [blocks, hidden, hasImages]);
+  }, [hidden, resize]);
   return <div ref={root} className={`inline-note-content${hasImages ? " has-images" : ""}`} hidden={hidden}>
     {blocks.map((block, index) => block.type === "text" ? <textarea key={`text-${index}`}
       ref={(editor) => { if (editor) editors.current.set(index, editor); else editors.current.delete(index); }}
@@ -81,7 +116,7 @@ export default function InlineNoteContent({ note, hidden, readOnly, importing, l
       }}
       onChange={(event) => {
         onChange(content.slice(0, block.start) + event.target.value + content.slice(block.end));
-      }} /> : <div className="note-image-block" key={block.attachment.id}>
+      }} /> : <div className="note-image-block" data-attachment-id={block.attachment.id} key={block.attachment.id}>
         <NoteImage noteId={note.id} attachment={block.attachment} locale={locale} ready={!importing && !hidden} compact onOpen={onOpenAttachment} />
         <button className="note-image-remove" disabled={readOnly} title={t("removeImage", locale)}
           aria-label={`${t("removeImage", locale)} ${block.attachment.name}`} onClick={() => onRemoveAttachment(block.attachment.id)}><X size={13} /></button>

@@ -25,27 +25,32 @@ import {
   PanelTop,
   CornerUpLeft,
 } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { DEFAULT_SHORTCUTS, type AiConfig, type AiOperation, type FeishuSyncMode, type Note, type NoteAttachment, type NoteThemeId, type ShortcutActionId, type ShortcutConfig, type SyncProviderConfig, type SyncProviderId } from "../shared/types.js";
 import { parseFeishuTarget } from "../shared/feishuTarget.js";
 import { noteSyncHash } from "../platform/sync/feishuApi.js";
 import { DEFAULT_THEME_OPACITY, MIN_THEME_OPACITY, getNoteTitle, isNoteThemeId, normalizeThemeOpacity } from "../shared/notes.js";
 import { aiErrorMessages, syncErrorMessages, t, type Locale, type MessageKey } from "./i18n.js";
-import AiSettings from "./AiSettings.js";
 import { applyPolish, undoPolish, type PolishChange } from "./notePolish.js";
 import NoteEditor from "./NoteEditor.js";
 import NoteList from "./NoteList.js";
 import NoteBook, { type PageTurn, type PageTurnDirection } from "./NoteBook.js";
-import MarkdownPreview from "./MarkdownPreview.js";
-import AiComparison from "./AiComparison.js";
+import FeedbackStack from "./FeedbackStack.js";
+import { noteSearchMatches } from "./noteSearch.js";
+import { readWorkspaceView, writeWorkspaceView, type EditorView } from "./workspaceView.js";
 import { hasNoteContent, NoteSaveQueue } from "./noteSaveQueue.js";
 import { readyWindow, startDragging } from "./desktop.js";
+import { usePureNoteSize } from "./usePureNoteSize.js";
 import { randomUUID } from "../shared/id.js";
 import type { NoteWindowContext } from "../shared/types.js";
 import { appendAttachments, importAttachmentBatch } from "./attachmentImport.js";
 import type { ImageInsertion } from "./attachmentImport.js";
 import type { NoteEditorHandle } from "./InlineNoteContent.js";
 import { contentWithAttachmentImages, noteContentBlocks, removeAttachmentImages } from "../shared/markdown.js";
+
+const AiSettings = lazy(() => import("./AiSettings.js"));
+const MarkdownPreview = lazy(() => import("./MarkdownPreview.js"));
+const AiComparison = lazy(() => import("./AiComparison.js"));
 
 const providerLabels: Record<SyncProviderId, string> = { notion: "Notion", feishu: "飞书" };
 const shortcutLabelKeys: Record<ShortcutActionId, MessageKey> = {
@@ -69,16 +74,17 @@ function createNote(): Note {
 }
 
 const PREFERENCES_KEY = "desk-tabs.preferences";
-type AppPreferences = { locale: Locale; themeOpacity: number; captureHintSeen: boolean };
+type AppPreferences = { locale: Locale; themeOpacity: number; captureHintSeen: boolean; fontSize: number };
 
 function readPreferences(): AppPreferences {
-  const fallback: AppPreferences = { locale: "zh", themeOpacity: DEFAULT_THEME_OPACITY, captureHintSeen: false };
+  const fallback: AppPreferences = { locale: "zh", themeOpacity: DEFAULT_THEME_OPACITY, captureHintSeen: false, fontSize: 13 };
   try {
     const value = JSON.parse(window.localStorage.getItem(PREFERENCES_KEY) ?? "null") as Partial<AppPreferences> | null;
     return {
       locale: value?.locale === "en" ? "en" : "zh",
       themeOpacity: normalizeThemeOpacity(value?.themeOpacity) ?? fallback.themeOpacity,
       captureHintSeen: value?.captureHintSeen === true,
+      fontSize: typeof value?.fontSize === "number" && Number.isInteger(value.fontSize) && value.fontSize >= 12 && value.fontSize <= 22 ? value.fontSize : fallback.fontSize,
     };
   } catch {
     return fallback;
@@ -125,6 +131,11 @@ const themeOptions: Array<{ id: NoteThemeId; labelKey: MessageKey; swatch: strin
 
 export default function App({ context }: { context: NoteWindowContext }) {
   const isSingleNote = context.noteId !== null;
+  const [pureMode, setPureMode] = useState(isSingleNote && !!context.pure);
+  const [changingPureMode, setChangingPureMode] = useState(false);
+  const pureModeLock = useRef(false);
+  const exitPureMode = useRef<() => void>(() => {});
+  const shellRef = useRef<HTMLElement>(null);
   const [openNoteIds, setOpenNoteIds] = useState(context.openNoteIds);
   const openNoteIdsRef = useRef(context.openNoteIds);
   const [transferring, setTransferring] = useState(false);
@@ -135,9 +146,11 @@ export default function App({ context }: { context: NoteWindowContext }) {
   const { locale, themeOpacity } = preferences;
   const [notes, setNotes] = useState<Note[]>([]);
   const [draft, setDraft] = useState<Note | null>(null);
+  const navigationNotes = useMemo(() => draft?.archived ? [draft] : notes.filter((note) => !note.archived).sort((a, b) => Number(!!b.favorite) - Number(!!a.favorite)), [notes, draft?.id, draft?.archived]);
   const isDelegated = !isSingleNote && !!draft && openNoteIds.includes(draft.id);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
   const [toast, setToast] = useState<string | null>(null);
+  const pureSizeError = useCallback(() => setToast(t("windowActionFailed", locale)), [locale]);
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -168,10 +181,16 @@ export default function App({ context }: { context: NoteWindowContext }) {
   const [aiPreviews, setAiPreviews] = useState<Record<string, { operation: AiOperation; originalContent: string; content: string }>>({});
   const [showAiPreview, setShowAiPreview] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showRecovery, setShowRecovery] = useState(false);
+  const [recoveryEntries, setRecoveryEntries] = useState<import("../shared/types.js").RecoveryEntry[]>([]);
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [recoveryError, setRecoveryError] = useState(false);
   const [polishChangeOperations, setPolishChangeOperations] = useState<Record<string, AiOperation>>({});
   const [polishFeedback, setPolishFeedback] = useState<{ noteId: string; key: MessageKey; operation: AiOperation; error?: boolean } | null>(null);
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
+  const [noteFind, setNoteFind] = useState<{ noteId: string; query: string; index: number } | null>(null);
   const polishLock = useRef(false);
+  const aiRequest = useRef<{ id: string; noteId: string; started: boolean; cancelled: boolean; interrupted: boolean } | null>(null);
   const polishIdle = useRef<Promise<void>>(Promise.resolve());
   const [appId, setAppId] = useState("");
   const [appSecret, setAppSecret] = useState("");
@@ -196,7 +215,8 @@ export default function App({ context }: { context: NoteWindowContext }) {
   const exitLock = useRef(false);
   const syncIdle = useRef<Promise<void>>(Promise.resolve());
   const importIdle = useRef<Promise<void>>(Promise.resolve());
-  const editorViews = useRef(new Map<string, { start: number; end: number; scroll: number; previewScroll: number; mode: "edit" | "preview" }>());
+  const initialViews = useMemo(() => new Map<string, EditorView>(Object.entries(readWorkspaceView(window.localStorage).views)), []);
+  const editorViews = useRef(initialViews);
   const saveQueueRef = useRef<NoteSaveQueue | null>(null);
   if (!saveQueueRef.current) {
     saveQueueRef.current = new NoteSaveQueue((note) => window.desktopTabs.saveNote(note), (saved) => {
@@ -311,11 +331,22 @@ export default function App({ context }: { context: NoteWindowContext }) {
       // the click just opened unless the document is still unfocused.
       window.setTimeout(() => {
         if (windowFocusRef.current) return;
+        if (aiRequest.current) aiRequest.current.interrupted = true;
         if (openMenu !== "settings") closeMenus();
       }, 0);
     };
     const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") { closeMenus(); focusEditor(); }
+      if (event.key === "Escape" && !event.isComposing && !event.defaultPrevented) {
+        if (pureMode && !openMenu && !document.querySelector(".panel-backdrop")) {
+          if (!event.repeat) exitPureMode.current();
+          return;
+        }
+        closeMenus(); setNoteFind(null);
+        if (pureMode) {
+          if (editorMode === "preview") previewRef.current?.focus({ preventScroll: true });
+          else noteEditorRef.current?.focus({ preventScroll: true });
+        } else focusEditor();
+      }
     };
     window.addEventListener("blur", handleWindowBlur);
     window.addEventListener("keydown", handleKeyDown);
@@ -323,10 +354,10 @@ export default function App({ context }: { context: NoteWindowContext }) {
       window.removeEventListener("blur", handleWindowBlur);
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [openMenu]);
+  }, [openMenu, pureMode, editorMode]);
 
   useEffect(() => {
-    const panel = showHelp || showAiPreview ? document.querySelector<HTMLElement>(".panel-backdrop .detail-panel")
+    const panel = showHelp || showAiPreview || showRecovery ? document.querySelector<HTMLElement>(".panel-backdrop .detail-panel")
       : openMenu === "settings" && (editingAi || editingProvider || editingShortcuts) ? document.querySelector<HTMLElement>(".settings-detail-panel") : null;
     if (!panel) return;
     const previous = document.activeElement as HTMLElement | null;
@@ -344,7 +375,7 @@ export default function App({ context }: { context: NoteWindowContext }) {
     };
     panel.addEventListener("keydown", trap);
     return () => { panel.removeEventListener("keydown", trap); for (const element of background) element.inert = false; if (previous?.isConnected) previous.focus({ preventScroll: true }); };
-  }, [showHelp, showAiPreview, openMenu, editingAi, editingProvider, editingShortcuts]);
+  }, [showHelp, showAiPreview, showRecovery, openMenu, editingAi, editingProvider, editingShortcuts]);
 
   const loadGeneration = useRef(0);
   async function loadNotes(): Promise<void> {
@@ -354,7 +385,8 @@ export default function App({ context }: { context: NoteWindowContext }) {
       const storedNotes = await window.desktopTabs.listNotes();
       if (generation !== loadGeneration.current) return;
       const sorted = [...storedNotes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-      const initialNote = (isSingleNote ? sorted.find((note) => note.id === context.noteId) : sorted[0]) ?? (isSingleNote ? null : createNote());
+      const lastActive = readWorkspaceView(window.localStorage).activeNoteId;
+      const initialNote = (isSingleNote ? sorted.find((note) => note.id === context.noteId) : sorted.find((note) => note.id === lastActive && !note.archived) ?? sorted.find((note) => !note.archived)) ?? (isSingleNote ? null : createNote());
       if (!initialNote) throw new Error("NOTE_MISSING");
       // Carry the previous per-note setting forward once, then keep opacity global.
       if (!window.localStorage.getItem(PREFERENCES_KEY)) {
@@ -363,8 +395,9 @@ export default function App({ context }: { context: NoteWindowContext }) {
       }
       saveQueue.seed(sorted);
       saveQueue.track(initialNote);
-      setNotes(sorted.length ? sorted : [initialNote]);
+      setNotes(sorted.some((note) => note.id === initialNote.id) ? sorted : [initialNote, ...sorted]);
       replaceDraft(initialNote);
+      setEditorMode(editorViews.current.get(initialNote.id)?.mode ?? "edit");
       setLoaded(true);
     } catch {
       if (generation === loadGeneration.current) setLoadError(true);
@@ -473,7 +506,8 @@ export default function App({ context }: { context: NoteWindowContext }) {
   useEffect(() => {
     document.documentElement.dataset.theme = activeTheme;
     document.documentElement.style.setProperty("--theme-opacity", String(activeThemeOpacity));
-  }, [activeTheme, activeThemeOpacity]);
+    document.documentElement.style.setProperty("--note-font-size", `${preferences.fontSize}px`);
+  }, [activeTheme, activeThemeOpacity, preferences.fontSize]);
 
   const attachmentSignature = useMemo(
     () => draft?.attachments.map((attachment) => `${attachment.id}:${attachment.name}:${attachment.size}`).join("|") ?? "",
@@ -491,7 +525,7 @@ export default function App({ context }: { context: NoteWindowContext }) {
     }, 520);
     autosaveTimer.current = timeout;
     return () => window.clearTimeout(timeout);
-  }, [draft?.id, draft?.content, draft?.theme, attachmentSignature, loaded]);
+  }, [draft?.id, draft?.content, draft?.theme, draft?.favorite, draft?.archived, attachmentSignature, loaded]);
 
   function cancelAutosave(): void {
     if (autosaveTimer.current !== null) window.clearTimeout(autosaveTimer.current);
@@ -535,13 +569,17 @@ export default function App({ context }: { context: NoteWindowContext }) {
   }
 
   function replaceDraft(note: Note | null): void {
+    const previousId = draftRef.current?.id;
     draftRef.current = note;
     setDraft(note);
+    if (note && note.id !== previousId && !isSingleNote) writeWorkspaceView(window.localStorage, note.id, undefined, true);
   }
 
   function updateDraft(patch: Partial<Note>): void {
     const current = draftRef.current;
     if (!current || exitLock.current || transferLock.current || closeLock.current || (!isSingleNote && openNoteIdsRef.current.includes(current.id))) return;
+    if (aiRequest.current && patch.content !== undefined && patch.content !== current.content) aiRequest.current.interrupted = true;
+    if (patch.content !== undefined && patch.content !== current.content) setNoteFind(null);
     if (patch.content !== undefined && patch.content !== current.content) clearAiChange(current.id);
     if (patch.content !== undefined || patch.attachments !== undefined) setAttachmentUndo(null);
     const next: Note = { ...current, ...patch, updatedAt: new Date().toISOString(),
@@ -630,10 +668,12 @@ export default function App({ context }: { context: NoteWindowContext }) {
       discardAiPreview(current.id);
       setAttachmentUndo(null);
       const remaining = notes.filter((note) => note.id !== current.id);
-      if (!remaining.length) { const blank = createNote(); saveQueue.track(blank); remaining.push(blank); }
+      const candidates = remaining.filter((note) => current.archived ? !!note.archived : !note.archived);
+      if (!candidates.length && current.archived) candidates.push(...remaining.filter((note) => !note.archived));
+      if (!candidates.length) { const blank = createNote(); saveQueue.track(blank); remaining.push(blank); candidates.push(blank); }
       setPageTurn(null);
       setNotes(remaining);
-      const neighbor = remaining[Math.min(index, remaining.length - 1)];
+      const neighbor = candidates[Math.min(Math.max(0, navigationNotes.findIndex((note) => note.id === current.id)), candidates.length - 1)];
       const next = neighbor ? saveQueue.read(neighbor.id) ?? neighbor : null;
       replaceDraft(next);
       setEditorMode(next ? editorViews.current.get(next.id)?.mode ?? "edit" : "edit");
@@ -816,6 +856,8 @@ export default function App({ context }: { context: NoteWindowContext }) {
     if (!current || polishLock.current || exitLock.current || (!isSingleNote && openNoteIdsRef.current.includes(current.id))) return;
     if (!current.content.trim()) { setToast(t("aiEmpty", locale)); return; }
     const noteId = current.id;
+    const request = { id: randomUUID(), noteId, started: false, cancelled: false, interrupted: false };
+    aiRequest.current = request;
     polishLock.current = true;
     setPolishingId(noteId);
     setRunningAiOperation(operation);
@@ -825,9 +867,12 @@ export default function App({ context }: { context: NoteWindowContext }) {
     polishIdle.current = new Promise<void>((resolve) => { finishPolish = resolve; });
     try {
       if (!await saveNoteId(noteId)) return;
+      if (request.cancelled) return;
+      request.started = true;
       const result = operation === "polish"
-        ? await window.desktopTabs.polishNote(noteId)
-        : await window.desktopTabs.aiNote(noteId, operation);
+        ? await window.desktopTabs.polishNote(noteId, request.id)
+        : await window.desktopTabs.aiNote(noteId, operation, request.id);
+      if (request.cancelled || result.status === "cancelled") return;
       if (result.status === "not-configured") {
         setPolishFeedback({ noteId, operation, key: "aiNotConfigured", error: true });
         openAiConfig();
@@ -836,13 +881,25 @@ export default function App({ context }: { context: NoteWindowContext }) {
       } else {
         if (result.content !== result.originalContent && saveQueue.read(noteId)) {
           setAiPreviews((previews) => ({ ...previews, [noteId]: { operation, originalContent: result.originalContent, content: result.content } }));
-          if (draftRef.current?.id === noteId) setShowAiPreview(true);
+          if (draftRef.current?.id === noteId && !request.interrupted && windowFocusRef.current) setShowAiPreview(true);
           setPolishFeedback({ noteId, operation, key: "aiPreviewReady" });
         } else await applyAiResult(noteId, result.originalContent, result.content, operation);
       }
     } catch (error) {
-      setPolishFeedback({ noteId, operation, key: error === "AI_CONFIG_UNAVAILABLE" ? "aiSecureUnavailable" : "aiError", error: true });
-    } finally { polishLock.current = false; setPolishingId(null); setRunningAiOperation(null); finishPolish(); }
+      if (!request.cancelled) setPolishFeedback({ noteId, operation, key: error === "AI_CONFIG_UNAVAILABLE" ? "aiSecureUnavailable" : "aiError", error: true });
+    } finally { aiRequest.current = null; polishLock.current = false; setPolishingId(null); setRunningAiOperation(null); finishPolish(); }
+  }
+
+  async function cancelAi(): Promise<void> {
+    const request = aiRequest.current;
+    if (!request || request.cancelled) return;
+    request.cancelled = true;
+    setPolishFeedback(null);
+    setToast(t("aiCancelled", locale));
+    if (request.started) {
+      try { if (!await window.desktopTabs.cancelAiNote(request.noteId, request.id) && aiRequest.current === request) setToast(t("aiCancelFailed", locale)); }
+      catch { setToast(t("aiCancelFailed", locale)); }
+    }
   }
 
   async function handlePolish(): Promise<void> {
@@ -850,12 +907,21 @@ export default function App({ context }: { context: NoteWindowContext }) {
   }
 
   async function applyAiResult(noteId: string, originalContent: string, content: string, operation: AiOperation): Promise<boolean> {
-    const applied = applyPolish(saveQueue.read(noteId), originalContent, content);
+    let applied = applyPolish(saveQueue.read(noteId), originalContent, content);
     if (applied.status !== "applied") {
       setPolishFeedback({ noteId, operation, key: applied.status === "changed" ? (operation === "polish" ? "aiPolishChanged" : "aiTransformChanged")
         : applied.status === "missing" ? (operation === "polish" ? "aiPolishMissing" : "aiTransformMissing") : aiOperationMeta[operation].unchangedKey, error: applied.status !== "unchanged" });
       return false;
     }
+    try {
+      if (!await saveNoteId(noteId)) return false;
+      await window.desktopTabs.snapshotAiNote(noteId, originalContent);
+    } catch {
+      setPolishFeedback({ noteId, operation, key: saveQueue.read(noteId)?.content !== originalContent ? "aiPreviewChanged" : "aiSnapshotFailed", error: true });
+      return false;
+    }
+    applied = applyPolish(saveQueue.read(noteId), originalContent, content);
+    if (applied.status !== "applied") { setPolishFeedback({ noteId, operation, key: "aiPreviewChanged", error: true }); return false; }
     saveQueue.track(applied.note);
     setAttachmentUndo(null);
     if (draftRef.current?.id === noteId) replaceDraft(applied.note);
@@ -874,9 +940,33 @@ export default function App({ context }: { context: NoteWindowContext }) {
 
   async function replaceWithAiPreview(): Promise<void> {
     const current = draftRef.current;
-    if (!current || polishLock.current || exitLock.current || transferLock.current || isDelegated) return;
+    if (!current || polishLock.current || exitLock.current || transferLock.current || navigationLock.current || isDelegated) return;
     const preview = aiPreviews[current.id];
-    if (preview && await applyAiResult(current.id, preview.originalContent, preview.content, preview.operation)) discardAiPreview(current.id);
+    navigationLock.current = true; setIsNavigating(true);
+    try { if (preview && await applyAiResult(current.id, preview.originalContent, preview.content, preview.operation)) discardAiPreview(current.id); }
+    finally { navigationLock.current = false; setIsNavigating(false); }
+  }
+
+  async function openRecovery(): Promise<void> {
+    closeMenus(); setShowRecovery(true); setRecoveryLoading(true); setRecoveryError(false);
+    try { setRecoveryEntries(await window.desktopTabs.listRecovery()); }
+    catch { setRecoveryError(true); }
+    finally { setRecoveryLoading(false); }
+  }
+
+  async function restoreRecovery(entryId: string): Promise<void> {
+    if (recoveryLoading || navigationLock.current || exiting) return;
+    setRecoveryLoading(true); setRecoveryError(false);
+    navigationLock.current = true; setIsNavigating(true);
+    try {
+      await saveQueue.flush();
+      const note = await window.desktopTabs.restoreRecovery(entryId);
+      rememberEditorView(); saveQueue.restore(note);
+      setNotes((items) => [note, ...items.filter((item) => item.id !== note.id)]);
+      clearAiChange(note.id); discardAiPreview(note.id); replaceDraft(note); setEditorMode("edit");
+      setShowRecovery(false); setToast(t("recoveryRestored", locale));
+    } catch { setRecoveryError(true); }
+    finally { setRecoveryLoading(false); navigationLock.current = false; setIsNavigating(false); }
   }
 
   async function saveAiPreviewAsNote(): Promise<void> {
@@ -1031,10 +1121,34 @@ export default function App({ context }: { context: NoteWindowContext }) {
   }
 
   function selectRelativeNote(offset: number): void {
-    if (!draft || notes.length < 2) return;
-    const index = notes.findIndex((note) => note.id === draft.id);
-    const nextIndex = (index + offset + notes.length) % notes.length;
-    void selectNote(notes[nextIndex], offset < 0 ? "previous" : "next");
+    if (!draft || navigationNotes.length < 2) return;
+    const index = navigationNotes.findIndex((note) => note.id === draft.id);
+    const nextIndex = (index + offset + navigationNotes.length) % navigationNotes.length;
+    void selectNote(navigationNotes[nextIndex], offset < 0 ? "previous" : "next");
+  }
+
+  async function toggleFavorite(): Promise<void> {
+    if (!draft || isDelegated || navigationLock.current || exiting) return;
+    updateDraft({ favorite: !draft.favorite });
+    if (await saveSnapshot()) setToast(t(draft.favorite ? "favoriteRemoved" : "favoriteAdded", locale));
+  }
+
+  async function toggleArchive(): Promise<void> {
+    const current = draftRef.current;
+    if (!current || isSingleNote || isDelegated || navigationLock.current || exiting) return;
+    navigationLock.current = true; setIsNavigating(true);
+    try {
+      updateDraft({ archived: !current.archived });
+      if (!await saveSnapshot()) return;
+      if (!current.archived) {
+        rememberEditorView();
+        const next = notes.find((note) => note.id !== current.id && !note.archived) ?? createNote();
+        saveQueue.track(next); replaceDraft(next);
+        setNotes((items) => items.some((note) => note.id === next.id) ? items : [next, ...items]);
+        setEditorMode(editorViews.current.get(next.id)?.mode ?? "edit");
+      }
+      closeMenus(); setToast(t(current.archived ? "noteUnarchived" : "noteArchived", locale));
+    } finally { navigationLock.current = false; setIsNavigating(false); }
   }
 
   function focusEditor(): void {
@@ -1053,9 +1167,28 @@ export default function App({ context }: { context: NoteWindowContext }) {
       start: editorMode === "edit" ? editor.selectionStart : previous?.start ?? editor.selectionStart,
       end: editorMode === "edit" ? editor.selectionEnd : previous?.end ?? editor.selectionEnd,
       scroll: editorMode === "edit" ? editor.scrollTop : previous?.scroll ?? 0,
-      previewScroll: previewRef.current?.scrollTop ?? previous?.previewScroll ?? 0, mode: editorMode,
+      previewScroll: (pureMode ? shellRef.current?.querySelector(".note-book")?.scrollTop : previewRef.current?.scrollTop) ?? previous?.previewScroll ?? 0, mode: editorMode,
     });
+    writeWorkspaceView(window.localStorage, current.id, editorViews.current.get(current.id), !isSingleNote);
   }
+
+  const viewTimer = useRef<number | null>(null);
+  const rememberViewRef = useRef(rememberEditorView);
+  rememberViewRef.current = rememberEditorView;
+  useEffect(() => {
+    const save = (event: Event): void => {
+      const target = event.type === "selectionchange" ? document.activeElement : event.target;
+      if (!(target instanceof HTMLElement) || !target.closest(".note-book")) return;
+      if (viewTimer.current !== null) window.clearTimeout(viewTimer.current);
+      viewTimer.current = window.setTimeout(() => rememberViewRef.current(), 150);
+    };
+    const flush = (): void => rememberViewRef.current();
+    document.addEventListener("selectionchange", save);
+    document.addEventListener("scroll", save, true);
+    window.addEventListener("blur", flush);
+    window.addEventListener("pagehide", flush);
+    return () => { document.removeEventListener("selectionchange", save); document.removeEventListener("scroll", save, true); window.removeEventListener("blur", flush); window.removeEventListener("pagehide", flush); if (viewTimer.current !== null) window.clearTimeout(viewTimer.current); };
+  }, []);
 
   function toggleEditorMode(): void {
     if (!draftRef.current || exitLock.current || transferLock.current || closeLock.current || navigationLock.current || isDelegated) return;
@@ -1063,11 +1196,28 @@ export default function App({ context }: { context: NoteWindowContext }) {
     setEditorMode((current) => current === "edit" ? "preview" : "edit");
   }
 
+  async function togglePureMode(): Promise<void> {
+    if (!isSingleNote || !loaded || pureModeLock.current || exiting || transferring || showHelp || showAiPreview) return;
+    pureModeLock.current = true;
+    setChangingPureMode(true);
+    rememberEditorView();
+    closeMenus();
+    try {
+      await window.desktopTabs.setNotePureMode(!pureMode);
+      setPureMode(!pureMode);
+    } catch { setToast(t("windowActionFailed", locale)); }
+    finally { pureModeLock.current = false; setChangingPureMode(false); }
+  }
+  exitPureMode.current = () => { void togglePureMode(); };
+
   function handleEditorModeKeyDown(event: ReactKeyboardEvent<HTMLElement>): void {
     const mac = navigator.platform.toLowerCase().includes("mac");
     const modifier = mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+    if (modifier && event.key === "," && !event.altKey && !event.shiftKey && !event.nativeEvent.isComposing && !event.repeat && !recordingShortcut && !showHelp && !showAiPreview && !showRecovery && !exiting) {
+      event.preventDefault(); toggleMenu("settings"); return;
+    }
     if (!modifier || event.key.toLowerCase() !== "e" || event.altKey || event.shiftKey || event.repeat || event.nativeEvent.isComposing || event.defaultPrevented) return;
-    if (!draft || exiting || transferring || isNavigating || isDelegated || openMenu || aiMenuOpen || recordingShortcut || showHelp || showAiPreview) return;
+    if (!draft || exiting || transferring || isNavigating || isDelegated || openMenu || aiMenuOpen || recordingShortcut || showHelp || showAiPreview || showRecovery) return;
     const target = event.target;
     if (target instanceof HTMLElement && (target.isContentEditable || target.closest("input, select"))) return;
     event.preventDefault();
@@ -1082,10 +1232,11 @@ export default function App({ context }: { context: NoteWindowContext }) {
       if (view) { editor.setSelectionRange(view.start, view.end); editor.scrollTop = view.scroll; }
       editor.focus({ preventScroll: true });
     } else if (previewRef.current) {
-      previewRef.current.scrollTop = view?.previewScroll ?? 0;
+      const scroller = pureMode ? shellRef.current?.querySelector(".note-book") : previewRef.current;
+      if (scroller) scroller.scrollTop = view?.previewScroll ?? 0;
       previewRef.current.focus({ preventScroll: true });
     }
-  }, [draft?.id, editorMode, isDelegated]);
+  }, [draft?.id, editorMode, isDelegated, pureMode]);
 
   const shortcutHandler = useRef<(action: ShortcutActionId) => void>(() => {});
   shortcutHandler.current = (action) => {
@@ -1103,7 +1254,22 @@ export default function App({ context }: { context: NoteWindowContext }) {
 
   const selectHandler = useRef(selectNote);
   selectHandler.current = selectNote;
-  const selectFromList = useCallback((note: Note) => { void selectHandler.current(note); }, []);
+  const selectFromList = useCallback((note: Note, query: string) => { void (async () => {
+    await selectHandler.current(note);
+    if (draftRef.current?.id === note.id && query) { setEditorMode("edit"); setNoteFind({ noteId: note.id, query, index: 0 }); }
+  })(); }, []);
+  const activeFind = draft && noteFind?.noteId === draft.id ? noteFind : null;
+  const findMatches = useMemo(() => activeFind && draft ? noteSearchMatches(contentWithAttachmentImages(draft.content, draft.attachments), activeFind.query) : [], [activeFind, draft?.content, attachmentSignature]);
+  useLayoutEffect(() => {
+    if (!activeFind || !draft) return;
+    const match = findMatches[activeFind.index % Math.max(1, findMatches.length)];
+    if (match) noteEditorRef.current?.revealRange(match.start, match.end);
+    else {
+      const file = draft.attachments.find((item) => noteSearchMatches(item.name, activeFind.query).length);
+      const element = [...document.querySelectorAll<HTMLElement>("[data-attachment-id]")].find((node) => node.dataset.attachmentId === file?.id);
+      element?.scrollIntoView({ block: "nearest" }); element?.querySelector("button")?.focus({ preventScroll: true });
+    }
+  }, [activeFind, findMatches, draft?.id]);
 
   async function handleOpenNoteWindow(noteId: string): Promise<void> {
     if (isSingleNote || transferLock.current || exitLock.current) return;
@@ -1130,7 +1296,7 @@ export default function App({ context }: { context: NoteWindowContext }) {
     openNoteIdsRef.current = next.openNoteIds;
     if (released.length) {
       try {
-        for (const note of await window.desktopTabs.listNotes()) {
+        for (const note of await window.desktopTabs.listNotes(released)) {
           if (released.includes(note.id)) saveQueue.acceptExternal(note);
         }
       } catch { setToast(t("loadFailed", locale)); }
@@ -1218,6 +1384,7 @@ export default function App({ context }: { context: NoteWindowContext }) {
   }), []);
 
   async function hideWindow(minimize = false): Promise<void> {
+    rememberEditorView();
     if (isSingleNote && !minimize) { await closeSingleNote(); return; }
     if (!await saveSnapshot()) return;
     if (minimize) window.desktopTabs.minimizeWindow();
@@ -1254,13 +1421,32 @@ export default function App({ context }: { context: NoteWindowContext }) {
   const remoteDocumentUrl = activeSyncFeedback?.url ?? draft?.feishu?.url;
   const syncStatusKey: MessageKey = syncingId === draft?.id ? "syncing" : activeSyncFeedback?.error || draft?.syncState === "error" ? "syncStatusError"
     : draft?.syncState === "synced" ? "syncStatusSynced" : draft?.feishu?.syncedAt ? "syncStatusChanged" : "syncStatusLocal";
-  const activeNoteIndex = notes.findIndex((note) => note.id === draft?.id);
-  const previousNote = activeNoteIndex >= 0 && notes.length > 1 ? notes[(activeNoteIndex - 1 + notes.length) % notes.length] : undefined;
-  const nextNote = activeNoteIndex >= 0 && notes.length > 1 ? notes[(activeNoteIndex + 1) % notes.length] : undefined;
+  const activeNoteIndex = navigationNotes.findIndex((note) => note.id === draft?.id);
+  const previousNote = activeNoteIndex >= 0 && navigationNotes.length > 1 ? navigationNotes[(activeNoteIndex - 1 + navigationNotes.length) % navigationNotes.length] : undefined;
+  const nextNote = activeNoteIndex >= 0 && navigationNotes.length > 1 ? navigationNotes[(activeNoteIndex + 1) % navigationNotes.length] : undefined;
+  usePureNoteSize(shellRef, pureMode && loaded, pureSizeError, openMenu || showHelp || showAiPreview ? 320 : 72);
+
+  const editorActions = useRef({ updateDraft, openLink, handleOpenAttachment, removeAttachment, handleImportFiles, locale, pureMode });
+  editorActions.current = { updateDraft, openLink, handleOpenAttachment, removeAttachment, handleImportFiles, locale, pureMode };
+  const changeContent = useCallback((content: string) => editorActions.current.updateDraft({ content }), []);
+  const openEditorLink = useCallback((url: string) => { void editorActions.current.openLink(url); }, []);
+  const openEditorAttachment = useCallback((attachment: NoteAttachment) => { void editorActions.current.handleOpenAttachment(attachment); }, []);
+  const removeEditorAttachment = useCallback((id: string) => editorActions.current.removeAttachment(id), []);
+  const importEditorFiles = useCallback((files: File[], imageOnly: boolean, insertion?: ImageInsertion) => { void editorActions.current.handleImportFiles(files, imageOnly, insertion); }, []);
+  const previewReady = useCallback(() => {
+    const note = draftRef.current;
+    const preview = previewRef.current;
+    if (!note || !preview) return;
+    const scroller = editorActions.current.pureMode ? shellRef.current?.querySelector(".note-book") : preview;
+    if (scroller) scroller.scrollTop = editorViews.current.get(note.id)?.previewScroll ?? 0;
+    preview.focus({ preventScroll: true });
+  }, []);
+  const rejectEditorImport = useCallback((directory: boolean) => setToast(t(directory ? "attachmentDirectoryUnsupported" : "attachmentImportUnavailable", editorActions.current.locale)), []);
 
   return (
-    <main className="app-shell note-window" data-window-focused={isWindowFocused} onKeyDown={handleEditorModeKeyDown} onClick={() => openMenu && closeMenus()}>
-      <header className="window-bar">
+    <main ref={shellRef} onPointerDownCapture={() => { if (aiRequest.current) aiRequest.current.interrupted = true; }} onKeyDownCapture={() => { if (aiRequest.current) aiRequest.current.interrupted = true; }} className={`app-shell note-window${pureMode ? " pure-mode" : ""}`} data-window-focused={isWindowFocused} onKeyDown={handleEditorModeKeyDown} onClick={() => openMenu && closeMenus()}
+      onContextMenu={(event) => { if (pureMode && !(event.target as HTMLElement).closest(".popover, .panel-backdrop")) { event.preventDefault(); toggleMenu("actions"); } }}>
+      {!pureMode && <header className="window-bar">
         <div className="window-drag-area" onMouseDown={(event) => {
           if (event.button === 0 && !(event.target as HTMLElement).closest("button")) void startDragging();
         }}>
@@ -1281,29 +1467,36 @@ export default function App({ context }: { context: NoteWindowContext }) {
           <button className="window-tool minimize" disabled={exiting} aria-label={t("minimize", locale)} title={t("minimize", locale)} onClick={() => void hideWindow(true)}><Minus size={14} /></button>
           <button className="window-tool close" disabled={exiting} aria-label={t(isSingleNote ? "closeNoteWindow" : "hideMainWindow", locale)} title={isSingleNote ? t("closeNoteWindow", locale) : shortcutTitle(t("hideMainWindow", locale), "toggleWindow")} onClick={() => void hideWindow()}><X size={14} /></button>
         </div>
-      </header>
+      </header>}
+
+      {pureMode && <div className="pure-drag-edge" aria-hidden="true" onMouseDown={(event) => { if (event.button === 0) void startDragging().catch(pureSizeError); }} />}
 
       <section className="note-surface" onClick={(event) => {
         event.stopPropagation();
         if (!(event.target as HTMLElement).closest(".popover, button")) closeMenus();
       }}>
-        <NoteBook previousNote={isSingleNote ? undefined : previousNote} nextNote={isSingleNote ? undefined : nextNote} currentIndex={isSingleNote ? 0 : activeNoteIndex} total={isSingleNote ? 1 : notes.length}
+        <NoteBook previousNote={isSingleNote ? undefined : previousNote} nextNote={isSingleNote ? undefined : nextNote} currentIndex={isSingleNote ? 0 : activeNoteIndex} total={isSingleNote ? 1 : navigationNotes.length}
           locale={locale} busy={isNavigating || exiting} turn={pageTurn} onTurnEnd={finishPageTurn}
           previousShortcut={configuredShortcut("previousNote")} nextShortcut={configuredShortcut("nextNote")}
           onPrevious={() => selectRelativeNote(-1)} onNext={() => selectRelativeNote(1)} onShowNotes={() => toggleMenu("notes")}>
         <div className="note-editor">
-          {draft ? <NoteEditor note={draft} preview={editorMode === "preview" || isDelegated} readOnly={exiting || transferring || isDelegated}
+          {activeFind && <div className="note-find-bar" role="search"><span>{findMatches.length ? `${activeFind.index % findMatches.length + 1} / ${findMatches.length}` : t("attachmentMatch", locale)}</span>
+            <button disabled={findMatches.length < 2} aria-label={t("previousMatch", locale)} onClick={() => setNoteFind({ ...activeFind, index: (activeFind.index - 1 + findMatches.length) % findMatches.length })}>↑</button>
+            <button disabled={findMatches.length < 2} aria-label={t("nextMatch", locale)} onClick={() => setNoteFind({ ...activeFind, index: (activeFind.index + 1) % findMatches.length })}>↓</button>
+            <button aria-label={t("closeSearch", locale)} onClick={() => { setNoteFind(null); noteEditorRef.current?.focus(); }}><X size={12} /></button></div>}
+          {draft ? <NoteEditor note={draft} preview={!activeFind && (editorMode === "preview" || isDelegated)} readOnly={exiting || transferring || isDelegated}
+            autoSize={pureMode} textSize={preferences.fontSize}
             importDisabled={isNavigating || openMenu === "settings"}
-            importing={pickingFiles} onImportFiles={(files, imageOnly, insertion) => void handleImportFiles(files, imageOnly, insertion)}
-            onImportRejected={(directory) => setToast(t(directory ? "attachmentDirectoryUnsupported" : "attachmentImportUnavailable", locale))}
-            locale={locale} editorRef={noteEditorRef} previewRef={previewRef} onChange={(content) => updateDraft({ content })}
-            onOpenLink={(url) => void openLink(url)} onOpenAttachment={(attachment) => void handleOpenAttachment(attachment)}
-            onRemoveAttachment={removeAttachment} /> : <div className="empty-note"><Sparkles size={21} /><span>{t(!loaded ? loadError ? "loadFailed" : "loadingNotes" : "emptyTitle", locale)}</span>
+            importing={pickingFiles} onImportFiles={importEditorFiles}
+            onImportRejected={rejectEditorImport}
+            locale={locale} editorRef={noteEditorRef} previewRef={previewRef} onChange={changeContent}
+            onOpenLink={openEditorLink} onOpenAttachment={openEditorAttachment}
+            onRemoveAttachment={removeEditorAttachment} onPreviewReady={previewReady} /> : <div className="empty-note"><Sparkles size={21} /><span>{t(!loaded ? loadError ? "loadFailed" : "loadingNotes" : "emptyTitle", locale)}</span>
             {loadError ? <button className="inline-new-button" onClick={() => void loadNotes()}>{t("retryLoad", locale)}</button>
               : loaded && <button className="inline-new-button" title={shortcutTitle(t("startWriting", locale), "newNote")} onClick={() => void handleNewNote()}>{t("startWriting", locale)}</button>}</div>}
         </div>
 
-        <footer className="note-footer" data-ai-menu-open={aiMenuOpen} data-discover={!preferences.captureHintSeen} onClick={(event) => event.stopPropagation()}>
+        {!pureMode && <footer className="note-footer" data-ai-menu-open={aiMenuOpen} onClick={(event) => event.stopPropagation()}>
           <div className="footer-content">
             {draft && <time className="note-date" dateTime={draft.updatedAt} title={new Date(draft.updatedAt).toLocaleString(locale === "zh" ? "zh-CN" : "en-US")}>{formatTime(draft.updatedAt, locale)}</time>}
             {remoteDocumentUrl && <button className="remote-document-link" title={t("openFeishu", locale)} aria-label={t("openFeishu", locale)} onClick={() => void openLink(remoteDocumentUrl)}><ExternalLink size={11} /><span>{t("openFeishu", locale)}</span></button>}
@@ -1324,21 +1517,21 @@ export default function App({ context }: { context: NoteWindowContext }) {
                 const label = t("syncFeishu", locale);
                 return <button key={provider} className="provider-sync-button" disabled={!!syncingId || !draft || exiting || isDelegated || transferring} aria-label={label} title={isSyncing ? t("syncing", locale) : label} onClick={() => void handleSync(provider)}>{isSyncing ? <LoaderCircle size={18} className="spin" aria-label={t("syncing", locale)} /> : <span className="provider-glyph feishu-glyph">飞</span>}<span className="provider-label">{t("feishu", locale)}</span></button>;
               })}
+              <button className="hover-tool" data-menu-trigger="settings" aria-label={t("settings", locale)} title={t("settings", locale)} aria-expanded={openMenu === "settings"} onClick={() => toggleMenu("settings")}><Settings2 size={15} /></button>
             </div>
           </div>
-          <button className="hover-tool always-settings" data-menu-trigger="settings" aria-label={t("settings", locale)} title={t("settings", locale)} aria-expanded={openMenu === "settings"} onClick={() => toggleMenu("settings")}><Settings2 size={15} /></button>
-          {draft && <span className="persistent-sync-status" role="status">{syncingId === draft.id && <LoaderCircle size={11} className="spin" />}{t(syncStatusKey, locale)}</span>}
-        </footer>
+          {draft && (draft.feishu?.syncedAt || draft.syncState === "error" || syncingId === draft.id || activeSyncFeedback?.error) && <span className="persistent-sync-status" role="status">{syncingId === draft.id && <LoaderCircle size={11} className="spin" />}{t(syncStatusKey, locale)}</span>}
+        </footer>}
         </NoteBook>
 
-        <div className="feedback-stack" onClick={(event) => event.stopPropagation()}>
-          {!preferences.captureHintSeen && loaded && !isSingleNote && <div className="sync-feedback capture-hint" role="status"><span>{t("captureHint", locale)}</span><button className="dismiss-feedback" aria-label={t("dismissMessage", locale)} onClick={() => updatePreferences({ captureHintSeen: true })}><X size={12} /></button></div>}
-          {deletedUndo && <div className="sync-feedback" role="status"><span>{t("deletedNoteUndo", locale).replace("{title}", () => getNoteTitle(deletedUndo.note.content) || t("untitled", locale))}</span><button disabled={isNavigating || exiting || transferring} onClick={() => void undoDelete()}>{t("undoDelete", locale)}</button></div>}
-          {attachmentUndo && attachmentUndo.removed.id === draft?.id && <div className="sync-feedback" role="status"><span>{t("attachmentRemoved", locale)}</span><button disabled={exiting || isDelegated || transferring} onClick={() => void undoAttachmentRemoval()}>{t("undoRemove", locale)}</button></div>}
-          {isDelegated && draft && <div className="sync-feedback independent-feedback" role="status"><span>{t("independentNote", locale)}</span><button onClick={() => void handleOpenNoteWindow(draft.id)}>{t("focusNoteWindow", locale)}</button></div>}
-          {polishingId === draft?.id && <div className="sync-feedback" role="status">{t(runningAiOperation ? aiOperationMeta[runningAiOperation].processingKey : "aiPolishing", locale)}</div>}
-          {syncingId === draft?.id && <div className="sync-feedback" role="status">{t("syncing", locale)}</div>}
-          {activePolishFeedback && <div className={`sync-feedback ai-feedback ${activePolishFeedback.error ? "error" : ""}`} role="status">
+        <FeedbackStack locale={locale}>
+          {!preferences.captureHintSeen && loaded && !isSingleNote && <div data-priority={0} className="sync-feedback capture-hint" role="status"><span>{t("captureHint", locale)}</span><button className="dismiss-feedback" aria-label={t("dismissMessage", locale)} onClick={() => updatePreferences({ captureHintSeen: true })}><X size={12} /></button></div>}
+          {deletedUndo && <div data-priority={70} className="sync-feedback" role="status"><span>{t("deletedNoteUndo", locale).replace("{title}", () => getNoteTitle(deletedUndo.note.content) || t("untitled", locale))}</span><button disabled={isNavigating || exiting || transferring} onClick={() => void undoDelete()}>{t("undoDelete", locale)}</button></div>}
+          {attachmentUndo && attachmentUndo.removed.id === draft?.id && <div data-priority={70} className="sync-feedback" role="status"><span>{t("attachmentRemoved", locale)}</span><button disabled={exiting || isDelegated || transferring} onClick={() => void undoAttachmentRemoval()}>{t("undoRemove", locale)}</button></div>}
+          {isDelegated && draft && <div data-priority={20} className="sync-feedback independent-feedback" role="status"><span>{t("independentNote", locale)}</span><button onClick={() => void handleOpenNoteWindow(draft.id)}>{t("focusNoteWindow", locale)}</button></div>}
+          {polishingId === draft?.id && <div data-priority={50} className="sync-feedback" role="status">{t(runningAiOperation ? aiOperationMeta[runningAiOperation].processingKey : "aiPolishing", locale)}<button onClick={() => void cancelAi()}>{t("cancelAi", locale)}</button></div>}
+          {syncingId === draft?.id && <div data-priority={50} className="sync-feedback" role="status">{t("syncing", locale)}</div>}
+          {activePolishFeedback && <div data-priority={activePolishFeedback.error ? 80 : 40} className={`sync-feedback ai-feedback ${activePolishFeedback.error ? "error" : ""}`} role="status">
             <div className="ai-feedback-row"><span className="ai-feedback-message">{t(activePolishFeedback.key, locale)}</span>
               <div className="ai-feedback-controls">
                 {canUndoPolish && <button className="undo-polish" disabled={!!polishingId || exiting || isDelegated || transferring} onClick={() => void handleUndoPolish()}>{t(activeAiOperation === "polish" ? "aiUndo" : "aiUndoTransform", locale)}</button>}
@@ -1350,28 +1543,37 @@ export default function App({ context }: { context: NoteWindowContext }) {
             {activeAiPreview && <button onClick={() => setShowAiPreview(true)}>{t("aiViewResult", locale)}</button>}
           </div>}
           {exiting && <div className="sync-feedback" role="status">{t("finishingExit", locale)}</div>}
-          {(saveState === "error" || failedSaves.size > 0) && <div className="sync-feedback error" role="alert"><span>{t("saveFailed", locale)}</span>
+          {(saveState === "error" || failedSaves.size > 0) && <div data-priority={100} className="sync-feedback error" role="alert"><span>{t("saveFailed", locale)}</span>
             <button className="retry-save" disabled={saveState === "saving" || exiting} onClick={() => void retrySave()}>{t("retrySave", locale)}</button></div>}
-          {activeSyncFeedback && <div className={`sync-feedback ${activeSyncFeedback.error ? "error" : ""}`} role="status"><span>{activeSyncFeedback.message}</span>
+          {activeSyncFeedback && <div data-priority={activeSyncFeedback.error ? 90 : 30} className={`sync-feedback ${activeSyncFeedback.error ? "error" : ""}`} role="status"><span>{activeSyncFeedback.message}</span>
             {syncConflict && syncConflict.note.id === draft?.id && <div className="sync-conflict-actions"><button onClick={() => void openLink(syncConflict.url)}>{t("reviewRemote", locale)}</button><button disabled={!!syncingId || exiting || isDelegated || transferring} onClick={() => { const conflict = syncConflict; setSyncConflict(null); void handleSync(conflict.provider, conflict.note); }}>{t("overwriteRemote", locale)}</button><button onClick={() => { setSyncConflict(null); setSyncFeedback({ noteId: draft!.id, message: t("syncConflictCancelled", locale), url: syncConflict.url }); }}>{t("keepRemote", locale)}</button></div>}
             {activeSyncFeedback.error && syncConflict?.note.id !== draft?.id && <button className="retry-sync" disabled={!!syncingId || exiting || isDelegated || transferring} onClick={() => void handleSync("feishu")}>{t("retrySync", locale)}</button>}
             <button className="dismiss-feedback" aria-label={t("dismissMessage", locale)} onClick={() => setSyncFeedback(null)}><X size={12} /></button></div>}
-        </div>
+        </FeedbackStack>
 
         {openMenu === "notes" && <div className="popover notes-popover" onBlur={handlePopoverBlur}><NoteList notes={notes} activeNote={draft} locale={locale} newNoteTip={shortcutTitle(t("newNote", locale), "newNote")} onSelect={selectFromList} onNew={() => void handleNewNote()} onOpen={(id) => void handleOpenNoteWindow(id)} openNoteIds={openNoteIds} onClose={() => { closeMenus(); focusEditor(); }} /></div>}
         {openMenu === "actions" && <div className="popover actions-popover" onBlur={handlePopoverBlur}>
+          {isSingleNote && <button disabled={!loaded || changingPureMode || exiting || transferring} onClick={() => void togglePureMode()}><Expand size={14} />{t(pureMode ? "exitPureMode" : "enterPureMode", locale)}</button>}
+          {pureMode && <button onClick={() => { closeMenus(); toggleEditorMode(); }}><Eye size={14} />{t("togglePreview", locale)}</button>}
+          {pureMode && <button disabled={exiting} onClick={() => void hideWindow()}><X size={14} />{t("closeNoteWindow", locale)}</button>}
+          {!isSingleNote && <>
+            <button disabled={!loaded || isNavigating || exiting || transferring} title={shortcutTitle(t("newNote", locale), "newNote")} onClick={() => void handleNewNote()}><CirclePlus size={14} />{t("newNote", locale)}</button>
+            <button disabled={!draft || !hasNoteContent(draft) || exiting || transferring} onClick={() => draft && void handleOpenNoteWindow(draft.id)}><PanelTop size={14} />{t(isDelegated ? "focusNoteWindow" : "openNoteWindow", locale)}</button>
+          </>}
+          <button disabled={!draft || isNavigating || isDelegated || exiting} onClick={() => void toggleFavorite()}><Star size={14} />{t(draft?.favorite ? "removeFavorite" : "addFavorite", locale)}</button>
           {canUndoPolish && <button disabled={!!polishingId || exiting || isDelegated || transferring} onClick={() => { closeMenus(); void handleUndoPolish(); }}><CornerUpLeft size={14} />{t(activeAiOperation === "polish" ? "aiUndo" : "aiUndoTransform", locale)}</button>}
           {activeAiPreview && <button onClick={() => { closeMenus(); setShowAiPreview(true); }}><Sparkles size={14} />{t("aiViewResult", locale)}</button>}
           {isSingleNote ? <button disabled={exiting || transferring} onClick={() => void closeSingleNote(true)}><CornerUpLeft size={14} />{t("returnToMain", locale)}</button> : <>
-            <button disabled={!draft || !hasNoteContent(draft) || exiting || transferring} onClick={() => draft && void handleOpenNoteWindow(draft.id)}><PanelTop size={14} />{t(isDelegated ? "focusNoteWindow" : "openNoteWindow", locale)}</button>
-            <button disabled={!loaded || isNavigating || exiting || transferring} title={shortcutTitle(t("newNote", locale), "newNote")} onClick={() => void handleNewNote()}><CirclePlus size={14} />{t("newNote", locale)}</button>
+            <button disabled={!draft || isNavigating || isDelegated || exiting} onClick={() => void toggleArchive()}><Layers3 size={14} />{t(draft?.archived ? "unarchiveNote" : "archiveNote", locale)}</button>
             <button disabled={!draft || isNavigating || pickingFiles || exiting || transferring} onClick={() => void handleDelete()}><Trash2 size={14} />{t("deleteNote", locale)}</button>
           </>}
           <button className="compact-minimize" onClick={() => void hideWindow(true)}><Minus size={14} />{t("minimize", locale)}</button>
+          {!isSingleNote && <button onClick={() => void openRecovery()}><CornerUpLeft size={14} />{t("recoveryHistory", locale)}</button>}
           <button onClick={() => { closeMenus(); setShowHelp(true); }}><BookOpen size={14} />{t("usageGuide", locale)}</button>
           {!isSingleNote && <button disabled={exiting || transferring} onClick={() => { closeMenus(); void window.desktopTabs.quitApplication().catch(() => setToast(t("windowActionFailed", locale))); }}><LogOut size={14} />{t("quitApplication", locale)}</button>}
         </div>}
         {openMenu === "settings" && <div className={`popover settings-popover ${editingAi || editingProvider || editingShortcuts ? "settings-detail-panel" : ""}`} role={editingAi || editingProvider || editingShortcuts ? "dialog" : undefined} aria-modal={editingAi || editingProvider || editingShortcuts ? true : undefined} aria-label={t("settings", locale)}>
+          {!editingAi && !editingProvider && !editingShortcuts && <label className="font-size-setting"><span>{t("readingFontSize", locale)} <output>{preferences.fontSize}</output></span><input type="range" aria-label={t("readingFontSize", locale)} min={12} max={22} step={1} value={preferences.fontSize} onChange={(event) => updatePreferences({ fontSize: Number(event.target.value) })} /></label>}
           {(editingAi || editingProvider || editingShortcuts) && <div className="settings-detail-header"><span>{t("settings", locale)}</span><button aria-label={t("closePanel", locale)} onClick={() => { closeMenus(); focusEditor(); }}><X size={16} /></button></div>}
           {isSingleNote ? <>
             <div className="popover-title">{t("noteTheme", locale)}</div>
@@ -1387,9 +1589,9 @@ export default function App({ context }: { context: NoteWindowContext }) {
             <p className={`credential-hint ${configLoadError ? "ai-config-error" : ""}`} role={configLoadError ? "alert" : "status"}>
               {t(configLoadError ? editingAi ? "aiSecureUnavailable" : "secureStorageUnavailable" : "configLoading", locale)}</p>
             {configLoadError && <button className="secondary-action" onClick={() => { setLoadingConfig(true); setConfigLoadError(false); setConfigLoadAttempt((attempt) => attempt + 1); }}>{t("configRetry", locale)}</button>}
-          </> : editingAi ? <AiSettings config={aiConfig} locale={locale} draft={aiSettingsDraft} onDraftChange={setAiSettingsDraft} onClose={() => setEditingAi(false)}
+          </> : editingAi ? <Suspense fallback={<p role="status">{t("viewLoading", locale)}</p>}><AiSettings config={aiConfig} locale={locale} draft={aiSettingsDraft} onDraftChange={setAiSettingsDraft} onClose={() => setEditingAi(false)}
             onSaved={(config) => { setAiSettingsDraft(null); setAiConfig(config); setEditingAi(false); setToast(t("configSaved", locale)); }}
-            onCleared={() => { setAiSettingsDraft(null); setAiConfig(null); setEditingAi(false); setToast(t("configCleared", locale)); }} /> : editingProvider ? <>
+            onCleared={() => { setAiSettingsDraft(null); setAiConfig(null); setEditingAi(false); setToast(t("configCleared", locale)); }} /></Suspense> : editingProvider ? <>
             <button className="popover-back" onClick={() => setEditingProvider(null)}>‹ {t("back", locale)}</button>
             <div className="provider-heading"><span className={`provider-glyph ${editingProvider === "notion" ? "notion-glyph" : "feishu-glyph"}`}>{editingProvider === "notion" ? "N" : "飞"}</span><strong>{providerLabels[editingProvider]}</strong>{syncConfigs[editingProvider] && <span className="configured-label">{t("configured", locale)}</span>}</div>
             {editingProvider === "feishu" && <><label className="credential-field"><span>{t("feishuSyncMode", locale)}</span><select value={feishuMode} onChange={(event) => setFeishuMode(event.target.value as FeishuSyncMode)}><option value="create">{t("feishuCreateMode", locale)}</option><option value="append">{t("feishuAppendMode", locale)}</option></select></label>
@@ -1420,14 +1622,21 @@ export default function App({ context }: { context: NoteWindowContext }) {
           </>}
         </div>}
       </section>
-      {showHelp && <div className="panel-backdrop" onClick={(event) => event.stopPropagation()}><section className="detail-panel" role="dialog" aria-modal="true" aria-labelledby="usage-guide-title" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); setShowHelp(false); focusEditor(); } }}><header className="detail-panel-header"><strong id="usage-guide-title">{t("usageGuide", locale)}</strong><button autoFocus aria-label={t("closePanel", locale)} onClick={() => { setShowHelp(false); focusEditor(); }}><X size={16} /></button></header><MarkdownPreview content={t("usageGuideContent", locale)} locale={locale} onOpenLink={(url) => void openLink(url)} /></section></div>}
+      {showRecovery && <div className="panel-backdrop" onClick={(event) => event.stopPropagation()}><section className="detail-panel recovery-panel" role="dialog" aria-modal="true" aria-labelledby="recovery-title" onKeyDown={(event) => { if (event.key === "Escape" && !recoveryLoading) { event.stopPropagation(); setShowRecovery(false); focusEditor(); } }}>
+        <header className="detail-panel-header"><strong id="recovery-title">{t("recoveryHistory", locale)}</strong><button disabled={recoveryLoading} aria-label={t("closePanel", locale)} onClick={() => { setShowRecovery(false); focusEditor(); }}><X size={16} /></button></header>
+        <p className="credential-hint">{t("recoveryRetention", locale)}</p>
+        {recoveryError && <p className="credential-hint" role="alert">{t("recoveryFailed", locale)}<button disabled={recoveryLoading} onClick={() => void openRecovery()}>{t("retryLoad", locale)}</button></p>}
+        {recoveryLoading ? <p role="status">{t("loadingNotes", locale)}</p> : <div className="recovery-list">{recoveryEntries.length ? recoveryEntries.map((entry) => <div className="recovery-row" key={entry.id}><div><strong>{getNoteTitle(entry.title) || t("untitled", locale)}</strong><small>{t(entry.reason === "deleted" ? "recoveryDeleted" : entry.reason === "ai-before" ? "recoveryAiBefore" : "recoveryRestoreBefore", locale)} · {new Date(entry.createdAt).toLocaleString(locale === "zh" ? "zh-CN" : "en-US")}</small></div><button disabled={recoveryLoading} onClick={() => void restoreRecovery(entry.id)}>{t("restoreVersion", locale)}</button></div>) : <p>{t("recoveryEmpty", locale)}</p>}</div>}
+      </section></div>}
+      {showHelp && <div className="panel-backdrop" onClick={(event) => event.stopPropagation()}><section className="detail-panel" role="dialog" aria-modal="true" aria-labelledby="usage-guide-title" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); setShowHelp(false); focusEditor(); } }}><header className="detail-panel-header"><strong id="usage-guide-title">{t("usageGuide", locale)}</strong><button autoFocus aria-label={t("closePanel", locale)} onClick={() => { setShowHelp(false); focusEditor(); }}><X size={16} /></button></header><Suspense fallback={<p role="status">{t("viewLoading", locale)}</p>}><MarkdownPreview content={t("usageGuideContent", locale)} locale={locale} onOpenLink={(url) => void openLink(url)} /></Suspense></section></div>}
       {showAiPreview && activeAiPreview && draft && <div className="panel-backdrop" onClick={(event) => event.stopPropagation()}><section className="detail-panel ai-result-panel" role="dialog" aria-modal="true" aria-labelledby="ai-result-title" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); setShowAiPreview(false); focusEditor(); } }}>
         <header className="detail-panel-header"><strong id="ai-result-title">{t(aiOperationMeta[activeAiPreview.operation].labelKey, locale)}</strong><button autoFocus aria-label={t("closePanel", locale)} onClick={() => { setShowAiPreview(false); focusEditor(); }}><X size={16} /></button></header>
         {(aiPreviewApplied || draft.content !== activeAiPreview.originalContent) && <p className="credential-hint">{t(aiPreviewApplied ? "aiComparisonApplied" : "aiPreviewChanged", locale)}</p>}
-        <AiComparison key={draft.id} originalContent={activeAiPreview.originalContent} content={activeAiPreview.content} noteId={draft.id} attachments={draft.attachments} locale={locale} onOpenLink={(url) => void openLink(url)} onOpenAttachment={(attachment) => void handleOpenAttachment(attachment)} />
+        <Suspense fallback={<p role="status">{t("viewLoading", locale)}</p>}><AiComparison key={draft.id} originalContent={activeAiPreview.originalContent} content={activeAiPreview.content} noteId={draft.id} attachments={draft.attachments} locale={locale} onOpenLink={(url) => void openLink(url)} onOpenAttachment={(attachment) => void handleOpenAttachment(attachment)}
+          onEdit={aiPreviewApplied || isNavigating ? undefined : (content) => setAiPreviews((previews) => ({ ...previews, [draft.id]: { ...activeAiPreview, content } }))} /></Suspense>
         <div className="detail-panel-actions"><button disabled={exiting || isNavigating} onClick={() => { if (aiPreviewApplied) setShowAiPreview(false); else { discardAiPreview(draft.id); dismissAiFeedback(draft.id); } }}>{t(aiPreviewApplied ? "closePanel" : "aiKeepOriginal", locale)}</button><button disabled={exiting || isNavigating} onClick={() => void saveAiPreviewAsNote()}>{t("aiSaveAsNote", locale)}</button>{aiPreviewApplied ? <button disabled={!!polishingId || exiting || isDelegated || transferring} onClick={() => { setShowAiPreview(false); void handleUndoPolish(); }}>{t("aiUndoTransform", locale)}</button> : <button className="primary-action" disabled={draft.content !== activeAiPreview.originalContent || !!polishingId || exiting || isDelegated || transferring || isNavigating} onClick={() => void replaceWithAiPreview()}>{t("aiReplaceOriginal", locale)}</button>}</div>
       </section></div>}
-      {toast && <div className="toast" role="status"><Info size={14} />{toast}</div>}
+      {toast && !(toast === t("saveFailed", locale) && (saveState === "error" || failedSaves.size > 0)) && <div className="toast" role="status"><Info size={14} />{toast}</div>}
     </main>
   );
 }

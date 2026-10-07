@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-snapshot-ai-note"
+description = "Enables the snapshot_ai_note command without any pre-configured scope."
+commands.allow = ["snapshot_ai_note"]
+
+[[permission]]
+identifier = "deny-snapshot-ai-note"
+description = "Denies the snapshot_ai_note command without any pre-configured scope."
+commands.deny = ["snapshot_ai_note"]

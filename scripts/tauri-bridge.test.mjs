@@ -11,6 +11,16 @@ afterEach(() => clearMocks());
 const note = { id: "native-note", content: "Title\nbody", attachments: [], createdAt: "", updatedAt: "", syncState: "local" };
 const config = { provider: "feishu", appId: "cli_native", appSecretConfigured: true, collaboratorEmail: "user@example.com", syncMode: "create", updatedAt: "" };
 
+test("note refresh uses the same scoped native command with an optional ID filter", async () => {
+  const calls = [];
+  mockIPC((command, payload) => { calls.push({ command, payload }); return []; });
+  await desktopTabs.listNotes(); await desktopTabs.listNotes(["released"]);
+  assert.deepEqual(calls, [
+    { command: "list_notes", payload: {} },
+    { command: "list_notes", payload: { noteIds: ["released"] } },
+  ]);
+});
+
 test("recovery, AI copy and read-only connection checks use named native commands", async () => {
   const calls = [];
   mockIPC((command, payload) => { calls.push({ command, payload }); return command === "check_feishu_connection" ? { status: "connected", scope: "target", latencyMs: 1 } : note; });
@@ -138,12 +148,16 @@ test("independent window commands expose only named note and lifecycle actions",
   await desktopTabs.closeNoteWindow(true, true);
   await desktopTabs.openMainWindow(true);
   await desktopTabs.completeExit(true, "exit-generation");
+  await desktopTabs.setNotePureMode(true);
+  await desktopTabs.fitNoteContent(172);
   assert.deepEqual(calls, [
     { command: "open_note_window", payload: { noteId: "A" } },
     { command: "focus_note_window", payload: { noteId: "A" } },
     { command: "close_note_window", payload: { saved: true, returnToMain: true } },
     { command: "open_main_window", payload: { settings: true } },
     { command: "complete_exit", payload: { saved: true, requestId: "exit-generation" } },
+    { command: "set_note_pure_mode", payload: { pure: true } },
+    { command: "fit_note_content", payload: { height: 172 } },
   ]);
 });
 

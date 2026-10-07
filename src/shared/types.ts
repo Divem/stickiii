@@ -3,7 +3,7 @@ export type FeishuSyncMode = "create" | "append";
 
 export type NoteThemeId = "paper" | "mist" | "sage" | "sky" | "peach" | "lavender" | "ink";
 
-export type NoteWindowContext = { noteId: string | null; openNoteIds: string[]; readyNoteIds: string[]; pinned: boolean };
+export type NoteWindowContext = { noteId: string | null; openNoteIds: string[]; readyNoteIds: string[]; pinned: boolean; pure?: boolean };
 export type NoteChange = { note: Note; sourceWindow: string };
 
 export type ShortcutActionId = "toggleWindow" | "newNote" | "previousNote" | "nextNote";
@@ -82,6 +82,8 @@ export type NoteAttachment = {
   previewDataUrl?: string;
 };
 
+export type RecoveryEntry = { id: string; noteId: string; title: string; createdAt: string; reason: "deleted" | "ai-before" | "restore-before" };
+
 export type Note = {
   id: string;
   content: string;
@@ -89,6 +91,8 @@ export type Note = {
   createdAt: string;
   updatedAt: string;
   syncState: "local" | "syncing" | "synced" | "error";
+  favorite?: boolean;
+  archived?: boolean;
   theme?: NoteThemeId;
   /** Legacy per-note opacity, retained only when reading older records. */
   themeOpacity?: number;
@@ -130,11 +134,11 @@ export type AiOperation = "polish" | "translate" | "expand" | "explain";
 
 export type AiPolishError = "auth" | "rate-limit" | "model-or-endpoint" | "network" | "timeout" | "service" |
   "empty-note" | "too-large" | "invalid-response" | "truncated" | "refused" | "note-missing" | "busy";
-export type AiPolishResult =
+export type AiPolishResult = { status: "cancelled" }
   | { status: "polished" | "unchanged"; content: string; originalContent: string }
   | { status: "not-configured" }
   | { status: "error"; message: AiPolishError };
-export type AiTransformResult =
+export type AiTransformResult = { status: "cancelled" }
   | { status: "transformed" | "unchanged"; content: string; originalContent: string }
   | { status: "not-configured" }
   | { status: "error"; message: AiPolishError };

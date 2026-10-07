@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-recovery"
+description = "Enables the list_recovery command without any pre-configured scope."
+commands.allow = ["list_recovery"]
+
+[[permission]]
+identifier = "deny-list-recovery"
+description = "Denies the list_recovery command without any pre-configured scope."
+commands.deny = ["list_recovery"]

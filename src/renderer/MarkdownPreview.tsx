@@ -5,7 +5,7 @@ import { attachmentImageId, contentWithAttachmentImages, externalWebUrl } from "
 import type { NoteAttachment } from "../shared/types.js";
 import NoteImage from "./NoteImage.js";
 import { t, type Locale } from "./i18n.js";
-import { createContext, memo, useContext, type Ref } from "react";
+import { createContext, memo, useContext, useLayoutEffect, type Ref } from "react";
 import { toggleMarkdownTask } from "./markdownEditing.js";
 
 const TaskLine = createContext<number | null>(null);
@@ -16,7 +16,7 @@ function TaskCheckbox({ checked, content, onChange, locale }: { checked: boolean
   }} />;
 }
 
-export default memo(function MarkdownPreview({ content, locale, onOpenLink, previewRef, noteId, attachments = [], onOpenAttachment, imageReady, onChange }: {
+export default memo(function MarkdownPreview({ content, locale, onOpenLink, previewRef, noteId, attachments = [], onOpenAttachment, imageReady, onChange, onReady }: {
   content: string;
   locale: Locale;
   onOpenLink: (url: string) => void;
@@ -26,7 +26,9 @@ export default memo(function MarkdownPreview({ content, locale, onOpenLink, prev
   onOpenAttachment?: (attachment: NoteAttachment) => void;
   imageReady?: boolean;
   onChange?: (content: string) => void;
+  onReady?: () => void;
 }) {
+  useLayoutEffect(() => { onReady?.(); }, [onReady]);
   const body = contentWithAttachmentImages(content, attachments);
   const imageAttachment = (url: string) => attachments.find((item) => item.id === attachmentImageId(url) && item.mimeType.startsWith("image/"));
   return <div ref={previewRef} className="markdown-preview" tabIndex={0} aria-label={t("markdownPreview", locale)}>

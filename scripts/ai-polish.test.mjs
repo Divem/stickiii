@@ -92,3 +92,18 @@ test("AI transform actions send only a note ID and a fixed operation", async () 
     assert.deepEqual(calls, [{ command: "ai_note", payload: { noteId: "A", operation: "translate" } }]);
   } finally { clearMocks(); }
 });
+
+test("AI cancellation uses the same scoped request identity as generation", async () => {
+  const calls = [];
+  mockIPC((command, payload) => { calls.push({ command, payload }); return true; });
+  try {
+    await desktopTabs.polishNote("A", "request-a");
+    await desktopTabs.aiNote("A", "translate", "request-b");
+    await desktopTabs.cancelAiNote("A", "request-b");
+    assert.deepEqual(calls, [
+      { command: "polish_note", payload: { noteId: "A", requestId: "request-a" } },
+      { command: "ai_note", payload: { noteId: "A", operation: "translate", requestId: "request-b" } },
+      { command: "cancel_ai_note", payload: { noteId: "A", requestId: "request-b" } },
+    ]);
+  } finally { clearMocks(); }
+});

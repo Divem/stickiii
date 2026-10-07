@@ -9,19 +9,21 @@ function ChangeText({ changes }: { changes: AiTextChange[] }) {
     : change.kind === "removed" ? <del key={index}>{change.text}</del> : <span key={index}>{change.text}</span>)}</>;
 }
 
-export default function AiComparison({ originalContent, content, locale, noteId, attachments, onOpenLink, onOpenAttachment }: {
+export default function AiComparison({ originalContent, content, locale, noteId, attachments, onOpenLink, onOpenAttachment, onEdit }: {
   originalContent: string; content: string; locale: Locale; noteId: string; attachments: NoteAttachment[];
   onOpenLink: (url: string) => void; onOpenAttachment: (attachment: NoteAttachment) => void;
+  onEdit?: (content: string) => void;
 }) {
-  const [view, setView] = useState<"original" | "result" | "diff">("diff");
-  const changes = useMemo(() => compareAiText(originalContent, content), [originalContent, content]);
+  const [view, setView] = useState<"original" | "result" | "diff" | "edit">("diff");
+  const changes = useMemo(() => view === "diff" ? compareAiText(originalContent, content) : [], [originalContent, content, view]);
   const views = ["original", "result", "diff"] as const;
   const labels = { original: "aiOriginal", result: "aiResult", diff: "aiDifferences" } as const;
   return <div className="ai-comparison">
     <div className="ai-comparison-tabs" role="group" aria-label={t("aiComparisonViews", locale)}>
       {views.map((item) => <button key={item} type="button" aria-pressed={view === item} onClick={() => setView(item)}>{t(labels[item], locale)}</button>)}
+      {onEdit && <button type="button" aria-pressed={view === "edit"} onClick={() => setView("edit")}>{t("aiEditResult", locale)}</button>}
     </div>
-    {view === "diff" ? <>
+    {view === "edit" && onEdit ? <textarea className="ai-result-editor" aria-label={t("aiEditResult", locale)} value={content} onChange={(event) => onEdit(event.target.value)} /> : view === "diff" ? <>
       <div className="ai-diff-legend"><span className="ai-diff-added">+ {t("aiAdded", locale)}</span><span className="ai-diff-removed">− {t("aiRemoved", locale)}</span></div>
       <div className="ai-diff-scroll" tabIndex={0} aria-label={t("aiDifferences", locale)}>
         <div className="ai-diff-inline"><ChangeText changes={changes} /></div>

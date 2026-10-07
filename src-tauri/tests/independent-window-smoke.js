@@ -14,13 +14,66 @@
     editor.dispatchEvent(new Event("input", { bubbles: true }));
   };
   const denied = async (fn) => { try { await fn(); return false; } catch { return true; } };
+  const checkPureMode = async (editor) => {
+    const before = editor.value;
+    const normalHeight = innerHeight;
+    check(await denied(() => window.desktopTabs.fitNoteContent(100)), "NORMAL_WINDOW_CANNOT_AUTO_FIT");
+    setContent(editor, "纯净模式短记录");
+    document.querySelector('button[aria-label="更多操作"]').click();
+    const enter = await wait(() => [...document.querySelectorAll(".actions-popover button")].find((node) => node.textContent === "纯净模式"), "pure mode action");
+    enter.click();
+    await wait(() => document.querySelector(".pure-mode") && innerHeight < 260, "pure mode fits short note");
+    check(!document.querySelector(".window-bar") && !document.querySelector(".note-footer"), "PURE_MODE_HAS_NO_BARS");
+    check((await window.desktopTabs.getWindowContext()).pure, "PURE_MODE_NATIVE_CONTEXT");
+    check(await denied(() => window.desktopTabs.fitNoteContent(-1)), "PURE_INVALID_HEIGHT_REJECTED");
+    const shortHeight = innerHeight;
+    setContent(editor, "纯净模式\n" + "继续输入\n".repeat(20));
+    await wait(() => innerHeight > shortHeight + 100, "pure mode grows");
+    setContent(editor, "纯净模式\n" + "超长内容\n".repeat(150));
+    await wait(() => { const book = document.querySelector(".note-book"); return book.scrollHeight > book.clientHeight + 100; }, "pure long content scrolls");
+    check(innerHeight <= screen.availHeight + 1, "PURE_HEIGHT_WITHIN_SCREEN");
+    const book = document.querySelector(".note-book"); book.scrollTop = 120;
+    check(book.scrollTop > 0, "PURE_CONTENT_SCROLLABLE");
+    setContent(editor, "恢复短记录");
+    await wait(() => innerHeight === shortHeight, "pure mode shrinks");
+    editor.focus();
+    editor.dispatchEvent(new KeyboardEvent("keydown", { key: "e", metaKey: navigator.platform.startsWith("Mac"), ctrlKey: !navigator.platform.startsWith("Mac"), bubbles: true, cancelable: true }));
+    await wait(() => document.querySelector(".markdown-preview"), "pure preview keyboard");
+    document.querySelector(".markdown-preview").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    await wait(() => document.querySelector(".actions-popover") && innerHeight >= 320, "pure context actions have room");
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await wait(() => !document.querySelector(".actions-popover"), "pure Escape dismisses menu first");
+    document.querySelector(".markdown-preview").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    await wait(() => document.querySelector(".window-bar") && innerHeight === normalHeight, "pure Escape restores normal window");
+    document.querySelector(".editor-mode-switch").click();
+    await wait(() => !editor.hidden, "pure returns to editor");
+    setContent(editor, before);
+    return true;
+  };
   const checkAiComparison = async (noteId) => {
     const originalPolish = window.desktopTabs.polishNote;
     const before = (await window.desktopTabs.listNotes()).find((note) => note.id === noteId).content;
+    let returned = false;
+    let focusedAtResult = false;
+    let blurred = false;
+    const onBlur = () => { blurred = true; };
+    window.addEventListener("blur", onBlur);
     // Exercise the real renderer and native saves without paid model calls.
-    window.desktopTabs.polishNote = async () => ({ status: "polished", originalContent: before, content: before + "\nAI_QA_RESULT" });
+    window.desktopTabs.polishNote = async () => {
+      focusedAtResult = document.hasFocus() && document.querySelector(".note-window")?.dataset.windowFocused === "true";
+      returned = true;
+      return { status: "polished", originalContent: before, content: before + "\nAI_QA_RESULT" };
+    };
     try {
       document.querySelector('button[aria-label="AI 润色"]').click();
+      await wait(() => returned, "mock AI response");
+      await settle();
+      if (!document.querySelector(".ai-result-panel")) {
+        check(!focusedAtResult || blurred, `FOCUSED_AI_RESULT_AUTO_OPENS: ${JSON.stringify({ focusedAtResult, blurred, body: document.body.innerText.slice(-600) })}`);
+        document.querySelector('button[aria-label="更多操作"]').click();
+        const view = await wait(() => [...document.querySelectorAll(".actions-popover button")].find((button) => button.textContent === "查看 AI 结果"), "deferred AI result available");
+        view.click();
+      }
       const panel = await wait(() => document.querySelector(".ai-result-panel"), "AI comparison shown");
       check((await window.desktopTabs.listNotes()).find((note) => note.id === noteId).content === before, "AI_PREVIEW_KEEPS_ORIGINAL");
       check(panel.querySelector(".ai-diff-inline ins")?.textContent.includes("AI_QA_RESULT"), "AI_ADDITIONS_MARKED");
@@ -42,12 +95,13 @@
       undo.click();
       await wait(async () => (await window.desktopTabs.listNotes()).find((note) => note.id === noteId).content === before, "AI comparison undo saved");
       return true;
-    } finally { window.desktopTabs.polishNote = originalPolish; }
+    } finally { window.desktopTabs.polishNote = originalPolish; window.removeEventListener("blur", onBlur); }
   };
   const checkAttachments = async (noteId) => {
     const zone = await wait(() => document.querySelector(".attachment-drop-zone"), "attachment drop zone");
     const editor = document.querySelector("textarea.note-content");
-    const before = (await window.desktopTabs.listNotes()).find((note) => note.id === noteId).attachments.length;
+    const existing = (await window.desktopTabs.listNotes()).find((note) => note.id === noteId).attachments;
+    const before = existing.length;
     const canvas = document.createElement("canvas");
     canvas.width = 800; canvas.height = 1600;
     const drawing = canvas.getContext("2d");
@@ -60,10 +114,13 @@
     check(!editor.dispatchEvent(new ClipboardEvent("paste", { clipboardData: clipboard, bubbles: true, cancelable: true })), "IMAGE_PASTE_INTERCEPTED");
     await wait(async () => (await window.desktopTabs.listNotes()).find((note) => note.id === noteId)?.attachments.length === before + 1, "pasted image saved");
     await wait(() => !document.querySelector(".attachment-import-status"), "paste idle");
-    const image = (await window.desktopTabs.listNotes()).find((note) => note.id === noteId).attachments.find((file) => file.mimeType === "image/png");
-    check(image.previewDataUrl.startsWith("data:image/png;base64,") && image.name.startsWith("screenshot-"), "PASTE_PREVIEW");
-    const imageLink = await wait(() => document.querySelector(".inline-note-content .note-image-link"), "image link in edit mode");
-    check(imageLink.textContent === image.name && imageLink.getBoundingClientRect().height <= 32, "EDIT_IMAGE_COMPACT_LINK");
+    const filtered = await window.desktopTabs.listNotes([noteId]);
+    check(filtered.length === 1 && filtered[0].id === noteId, "FILTERED_NOTE_REFRESH");
+    if (context.noteId) check((await window.desktopTabs.listNotes(["qa-window-foreign"])).length === 0, "CHILD_FILTER_CANNOT_EXPAND_SCOPE");
+    const image = filtered[0].attachments.find((file) => file.mimeType === "image/png" && !existing.some((old) => old.id === file.id));
+    check(!image.previewDataUrl && image.name.startsWith("screenshot-"), "PASTE_PREVIEW_NOT_IN_NOTE");
+    const imageLink = await wait(() => [...document.querySelectorAll(".inline-note-content [data-attachment-id]")].find((node) => node.dataset.attachmentId === image.id)?.querySelector(".note-image-link"), "imported image link in edit mode");
+    check(imageLink.textContent === image.name && imageLink.getBoundingClientRect().height <= 32, `EDIT_IMAGE_COMPACT_LINK: ${JSON.stringify({ text: imageLink.textContent, expected: image.name, height: imageLink.getBoundingClientRect().height, hidden: document.querySelector('.inline-note-content').hidden })}`);
     check(!document.querySelector(".inline-note-content img"), "EDIT_IMAGE_NOT_INLINE");
     imageLink.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     const inline = await wait(() => document.querySelector(".note-image-hover-preview img"), "hover image preview");
@@ -128,6 +185,7 @@
       check(await denied(() => window.desktopTabs.restoreNote(context.noteId)), "CHILD_RESTORE_DENIED");
       check(await denied(() => window.desktopTabs.checkFeishuConnection()), "CHILD_CONNECTION_CHECK_DENIED");
       check(await denied(() => window.desktopTabs.createNoteCopy("qa-other-note", "forbidden")), "CHILD_COPY_NOTE_SCOPE");
+      check(await denied(() => window.desktopTabs.cancelAiNote("qa-other-note", crypto.randomUUID())), "CHILD_CANCEL_NOTE_SCOPE");
       const editor = await wait(() => document.querySelector("textarea.note-content"), "child editor");
       check(!document.querySelector('button[aria-label="快速记录"]') && !document.querySelector('button[aria-label="查看便签"]'), "CHILD_MANAGEMENT_CONTROLS");
       if (context.noteId === "qa-window-a") {
@@ -159,6 +217,7 @@
           disposeCancel();
         });
       } else if (context.noteId === "qa-window-b") {
+        check(await checkPureMode(editor), "CHILD_PURE_MODE");
         setContent(editor, "窗口 B\nCHILD_B_PASS");
         // Capture runs before the app's close handler, injecting a last
         // keystroke before its flush without waiting for autosave.
@@ -196,6 +255,8 @@
       await window.desktopTabs.deleteNote("qa-window-a");
       result.restoredDelete = !(await window.desktopTabs.getWindowContext()).openNoteIds.includes("qa-window-a");
     } else {
+      check(await denied(() => window.desktopTabs.setNotePureMode(true)), "MAIN_PURE_MODE_DENIED");
+      check(await denied(() => window.desktopTabs.fitNoteContent(100)), "MAIN_AUTO_FIT_DENIED");
       const copy = await window.desktopTabs.createNoteCopy("qa-window-b", "QA separate AI result");
       result.copyPreservesOriginal = copy.id !== "qa-window-b" && copy.content === "QA separate AI result"
         && (await window.desktopTabs.listNotes()).find((note) => note.id === "qa-window-b").content === "窗口 B\n原始便签";

@@ -10,6 +10,66 @@ const MAX_CONTENT: usize = 64 * 1024;
 const MAX_RESPONSE: usize = 1024 * 1024;
 const OUTPUT_RULES: &str = "保留首行标题结构、Markdown、链接、代码和待办勾选状态。仅输出完整结果，不要说明过程，不要添加前言，也不要用代码围栏包裹全文。";
 
+#[derive(Default)]
+pub struct Tasks {
+    active: Option<(String, String, String, tokio::sync::watch::Sender<bool>)>,
+}
+
+impl Tasks {
+    pub fn begin(&mut self, window: &str, note: &str, request: &str) -> tokio::sync::watch::Receiver<bool> {
+        let (sender, receiver) = tokio::sync::watch::channel(false);
+        self.active = Some((window.into(), note.into(), request.into(), sender));
+        receiver
+    }
+
+    pub fn cancel(&self, window: &str, note: &str, request: &str) -> bool {
+        let Some((owner, id, token, sender)) = &self.active else { return false; };
+        if owner != window || id != note || token != request { return false; }
+        sender.send(true).is_ok()
+    }
+
+    pub fn finish(&mut self, request: &str) {
+        if self.active.as_ref().is_some_and(|(_, _, token, _)| token == request) { self.active = None; }
+    }
+}
+
+pub async fn cancellable<T>(mut cancellation: tokio::sync::watch::Receiver<bool>, work: impl std::future::Future<Output = T>) -> Option<T> {
+    if *cancellation.borrow() { return None; }
+    tokio::select! {
+        biased;
+        _ = cancellation.changed() => None,
+        result = work => Some(result),
+    }
+}
+
+#[cfg(test)]
+mod cancellation_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn cancellation_requires_exact_owner_note_and_request_and_drops_work() {
+        let mut tasks = Tasks::default();
+        let receiver = tasks.begin("note-a", "a", "request-1");
+        assert!(!tasks.cancel("main", "a", "request-1"));
+        assert!(!tasks.cancel("note-a", "b", "request-1"));
+        assert!(!tasks.cancel("note-a", "a", "old-request"));
+        assert!(tasks.cancel("note-a", "a", "request-1"));
+        assert_eq!(cancellable(receiver, std::future::pending::<()>()).await, None);
+        tasks.finish("request-1");
+        assert!(!tasks.cancel("note-a", "a", "request-1"));
+        let receiver = tasks.begin("main", "b", "request-2");
+        tasks.finish("request-1");
+        assert_eq!(cancellable(receiver, async { 42 }).await, Some(42));
+    }
+
+    #[tokio::test]
+    async fn cancellation_after_work_started_stops_pending_future() {
+        let (sender, receiver) = tokio::sync::watch::channel(false);
+        let work = async { sender.send(true).unwrap(); std::future::pending::<()>().await };
+        assert_eq!(cancellable(receiver, work).await, None);
+    }
+}
+
 #[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Operation {

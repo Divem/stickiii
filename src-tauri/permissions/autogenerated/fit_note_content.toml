@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-fit-note-content"
+description = "Enables the fit_note_content command without any pre-configured scope."
+commands.allow = ["fit_note_content"]
+
+[[permission]]
+identifier = "deny-fit-note-content"
+description = "Denies the fit_note_content command without any pre-configured scope."
+commands.deny = ["fit_note_content"]

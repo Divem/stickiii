@@ -1,5 +1,6 @@
 import { randomUUID } from "../../shared/id.js";
-import { markdownForFeishu, markdownTitle } from "../../shared/markdown.js";
+import { markdownTitle } from "../../shared/markdown.js";
+import { markdownForFeishu } from "../../shared/feishuMarkdown.js";
 import { feishuTargetKey, parseFeishuTarget, selectFeishuDocument } from "../../shared/feishuTarget.js";
 import { appendFeishuChapter } from "./feishuChapter.js";
 import type { FeishuDocument, Note, SyncResult, SyncWarning } from "../../shared/types.js";

@@ -1,10 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { NoteChange, NoteWindowContext } from "../shared/types.js";
-import { createFeishuAdapter } from "../platform/sync/feishu.js";
 import { FeishuApi, FeishuError } from "../platform/sync/feishuApi.js";
 import type { StoredConfig } from "../platform/sync/configStore.js";
 import type { Note, ShortcutActionId, SyncOptions, SyncProviderConfig, SyncProviderId, SyncResult } from "../shared/types.js";
 import { MAX_ATTACHMENT_BYTES } from "./attachmentImport.js";
+import { AttachmentPreviewCache } from "./attachmentPreviewCache.js";
 
 async function importAttachment(noteId: string, file: File, imageOnly: boolean) {
   if (file.size > MAX_ATTACHMENT_BYTES) throw "ATTACHMENT_TOO_LARGE";
@@ -50,6 +50,7 @@ async function executeSync(note: Note, provider: SyncProviderId, options?: SyncO
   if (started.status === "result") return started.result;
   let result: SyncResult = { status: "error", provider, message: "local-save" };
   try {
+    const { createFeishuAdapter } = await import("../platform/sync/feishu.js");
     const adapter = createFeishuAdapter(undefined, 0, new NativeFeishuApi(started.jobId));
     result = await adapter.sync(started.note, {
       provider,
@@ -78,8 +79,12 @@ function subscribe<T>(event: string, callback: (payload: T) => void): () => void
   return () => window.removeEventListener(name, handler);
 }
 
+const previews = new AttachmentPreviewCache((noteId, attachmentId) => invoke("attachment_preview", { noteId, attachmentId }));
+
 export const desktopTabs: Window["desktopTabs"] = {
   getWindowContext: () => invoke("get_window_context"),
+  setNotePureMode: (pure) => invoke("set_note_pure_mode", { pure }),
+  fitNoteContent: (height) => invoke("fit_note_content", { height }),
   setWindowTitle: (title) => invoke("set_window_title", { title }),
   openNoteWindow: (noteId) => invoke("open_note_window", { noteId }),
   focusNoteWindow: (noteId) => invoke("focus_note_window", { noteId }),
@@ -92,14 +97,17 @@ export const desktopTabs: Window["desktopTabs"] = {
   onNoteActivated: (callback) => subscribe<string>("note:activate", callback),
   onSettingsRequested: (callback) => subscribe("settings:open", callback),
   onRestoreFailed: (callback) => subscribe("window:restore-failed", callback),
-  listNotes: () => invoke("list_notes"),
+  listNotes: (noteIds) => invoke("list_notes", noteIds ? { noteIds } : {}),
   saveNote: (note) => invoke("save_note", { note }),
   deleteNote: (noteId) => invoke("delete_note", { noteId }),
   restoreNote: (noteId) => invoke("restore_note", { noteId }),
+  listRecovery: () => invoke("list_recovery"),
+  snapshotAiNote: (noteId, expectedContent) => invoke("snapshot_ai_note", { noteId, expectedContent }),
+  restoreRecovery: (entryId) => invoke("restore_recovery", { entryId }),
   createNoteCopy: (noteId, content) => invoke("create_note_copy", { noteId, content }),
   pickFiles: () => invoke("pick_files"),
   importAttachment,
-  attachmentPreview: (noteId, attachmentId) => invoke("attachment_preview", { noteId, attachmentId }),
+  attachmentPreview: (noteId, attachmentId) => previews.get(noteId, attachmentId),
   openAttachment: (storedPath) => invoke("open_attachment", { storedPath }),
   openExternalLink: (url) => invoke("open_external_link", { url }),
   syncNote,
@@ -111,8 +119,9 @@ export const desktopTabs: Window["desktopTabs"] = {
   saveAiConfig: (input) => invoke("save_ai_config", { input }),
   clearAiConfig: () => invoke("clear_ai_config"),
   testAiConnection: (input) => invoke("test_ai_connection", { input }),
-  polishNote: (noteId) => invoke("polish_note", { noteId }),
-  aiNote: (noteId, operation) => invoke("ai_note", { noteId, operation }),
+  polishNote: (noteId, requestId) => invoke("polish_note", { noteId, ...(requestId ? { requestId } : {}) }),
+  aiNote: (noteId, operation, requestId) => invoke("ai_note", { noteId, operation, ...(requestId ? { requestId } : {}) }),
+  cancelAiNote: (noteId, requestId) => invoke("cancel_ai_note", { noteId, requestId }),
   setPinnedWindow: (pinned) => invoke("set_pinned_window", { pinned }),
   listShortcuts: () => invoke("list_shortcuts"),
   saveShortcuts: (shortcuts) => invoke("save_shortcuts", { shortcuts }),

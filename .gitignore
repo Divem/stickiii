@@ -20,6 +20,7 @@ src-tauri/gen/
 
 # Runtime data
 *.log
+.stickiii-package.lock
 
 # IDE
 .vscode/

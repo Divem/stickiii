@@ -1,6 +1,6 @@
 [package]
 name = "desk-tabs"
-version = "0.1.0"
+version = "0.1.1"
 license = "Apache-2.0"
 description = "从任意窗口快速打开的桌面随手记"
 edition = "2021"
@@ -24,12 +24,13 @@ serde_json = "1"
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
 tempfile = "3"
 dirs = "6"
 open = "5"
 url = "2"
 reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "native-tls"] }
-tokio = { version = "1", features = ["sync", "time"] }
+tokio = { version = "1", features = ["sync", "time", "macros"] }
 keyring = { version = "3.6", features = ["apple-native", "windows-native"] }
 
 [profile.release]

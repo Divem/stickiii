@@ -1,7 +1,7 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde_json::{json, Value};
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fs,
     io::{BufWriter, Read, Write},
     path::{Path, PathBuf},
@@ -9,6 +9,26 @@ use std::{
 use uuid::Uuid;
 
 pub const MAX_ATTACHMENT_BYTES: usize = 20 * 1024 * 1024;
+
+pub fn data_root(home: &Path) -> PathBuf {
+    home.join(".stikiii")
+}
+
+pub fn migration_source(
+    root: &Path,
+    previous: &Path,
+    electron: Option<&Path>,
+) -> Result<Option<PathBuf>, String> {
+    if root.join("notes.json").try_exists().map_err(|_| "LOCAL_READ_FAILED")? {
+        return Ok(None);
+    }
+    for source in std::iter::once(previous).chain(electron) {
+        if source.join("notes.json").try_exists().map_err(|_| "LOCAL_READ_FAILED")? {
+            return Ok(Some(source.to_path_buf()));
+        }
+    }
+    Ok(None)
+}
 
 fn image_type(bytes: &[u8]) -> Option<(&'static str, &'static str)> {
     if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
@@ -54,6 +74,32 @@ pub fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option<T
     }
 }
 
+pub fn strip_attachment_previews(note: &mut Value) {
+    if let Some(attachments) = note.get_mut("attachments").and_then(Value::as_array_mut) {
+        for attachment in attachments {
+            if let Some(object) = attachment.as_object_mut() { object.remove("previewDataUrl"); }
+        }
+    }
+}
+
+pub fn image_preview(path: &Path) -> Result<String, String> {
+    let file = fs::File::open(path).map_err(|_| "ATTACHMENT_PREVIEW_FAILED")?;
+    let mut bytes = Vec::new();
+    file.take((MAX_ATTACHMENT_BYTES + 1) as u64).read_to_end(&mut bytes).map_err(|_| "ATTACHMENT_PREVIEW_FAILED")?;
+    if bytes.len() > MAX_ATTACHMENT_BYTES { return Err("ATTACHMENT_TOO_LARGE".into()); }
+    image_type(&bytes).ok_or("UNSUPPORTED_CLIPBOARD_IMAGE")?;
+    let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format().map_err(|_| "ATTACHMENT_PREVIEW_FAILED")?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(16_384);
+    limits.max_image_height = Some(16_384);
+    limits.max_alloc = Some(128 * 1024 * 1024);
+    reader.limits(limits);
+    let thumbnail = reader.decode().map_err(|_| "ATTACHMENT_PREVIEW_FAILED")?.thumbnail(640, 640);
+    let mut output = std::io::Cursor::new(Vec::new());
+    thumbnail.write_to(&mut output, image::ImageFormat::Png).map_err(|_| "ATTACHMENT_PREVIEW_FAILED")?;
+    Ok(format!("data:image/png;base64,{}", STANDARD.encode(output.into_inner())))
+}
+
 pub fn managed_path(root: &Path, value: &str) -> Result<PathBuf, String> {
     let root = fs::canonicalize(root).map_err(|_| "INVALID_ATTACHMENT_PATH")?;
     let path = fs::canonicalize(value).map_err(|_| "INVALID_ATTACHMENT_PATH")?;
@@ -88,7 +134,11 @@ fn builtin_notes() -> Vec<Value> {
 }
 
 fn normalize_note(note: &mut Value) -> Result<(), String> {
+    strip_attachment_previews(note);
     let object = note.as_object_mut().ok_or("INVALID_NOTE")?;
+    for key in ["favorite", "archived"] {
+        if object.get(key).is_some_and(|value| !value.is_boolean()) { return Err("INVALID_NOTE".into()); }
+    }
     if object
         .get("id")
         .and_then(Value::as_str)
@@ -128,6 +178,38 @@ fn normalize_note(note: &mut Value) -> Result<(), String> {
     Ok(())
 }
 
+fn migrate_note(
+    note: &mut Value,
+    legacy: &Path,
+    root: &Path,
+    copied: &mut HashMap<PathBuf, PathBuf>,
+) -> Result<(), String> {
+    normalize_note(note)?;
+    for attachment in note["attachments"].as_array_mut().ok_or("INVALID_NOTE")? {
+        let old_path = attachment["storedPath"].as_str().ok_or("INVALID_ATTACHMENT_PATH")?;
+        let source = managed_path(&legacy.join("attachments"), old_path)?;
+        let destination = if let Some(path) = copied.get(&source) {
+            path.clone()
+        } else {
+            // New names prevent collisions with existing files or other source subdirectories.
+            let mut path = root.join("attachments").join(Uuid::new_v4().to_string());
+            if let Some(extension) = source.extension() {
+                path.set_extension(extension);
+            }
+            let mut file = tempfile::NamedTempFile::new_in(root.join("attachments"))
+                .map_err(|_| "ATTACHMENT_COPY_FAILED")?;
+            let mut input = fs::File::open(&source).map_err(|_| "ATTACHMENT_COPY_FAILED")?;
+            std::io::copy(&mut input, &mut file).map_err(|_| "ATTACHMENT_COPY_FAILED")?;
+            file.as_file().sync_all().map_err(|_| "LOCAL_SAVE_FAILED")?;
+            file.persist_noclobber(&path).map_err(|_| "ATTACHMENT_COPY_FAILED")?;
+            copied.insert(source, path.clone());
+            path
+        };
+        attachment["storedPath"] = json!(destination);
+    }
+    Ok(())
+}
+
 pub struct Store {
     pub root: PathBuf,
     pub notes: Vec<Value>,
@@ -135,7 +217,32 @@ pub struct Store {
     last_deleted: Option<(Value, std::time::Instant)>,
 }
 
+struct UpdatedNotes<'a> {
+    note: &'a Value,
+    notes: &'a [Value],
+}
+
+impl serde::Serialize for UpdatedNotes<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeSeq;
+        let mut sequence = serializer.serialize_seq(None)?;
+        sequence.serialize_element(self.note)?;
+        for note in self.notes.iter().filter(|note| note["id"] != self.note["id"]) {
+            sequence.serialize_element(note)?;
+        }
+        sequence.end()
+    }
+}
+
 impl Store {
+    fn upsert(&mut self, mut note: Value) -> Result<Value, String> {
+        strip_attachment_previews(&mut note);
+        atomic_json(&self.root.join("notes.json"), &UpdatedNotes { note: &note, notes: &self.notes })?;
+        // Publish in-memory state only after atomic persistence succeeds.
+        self.notes.retain(|previous| previous["id"] != note["id"]);
+        self.notes.insert(0, note.clone());
+        Ok(note)
+    }
     pub fn load(root: PathBuf, legacy: Option<&Path>) -> Result<Self, String> {
         fs::create_dir_all(root.join("attachments")).map_err(|_| "LOCAL_SAVE_FAILED")?;
         let notes_path = root.join("notes.json");
@@ -143,35 +250,35 @@ impl Store {
         if !had_notes_file {
             if let Some(legacy) = legacy {
                 if let Some(mut notes) = read_json::<Vec<Value>>(&legacy.join("notes.json"))? {
-                    let mut copied = std::collections::HashMap::<PathBuf, PathBuf>::new();
+                    let mut metadata = Vec::new();
+                    for name in ["shortcuts.json", "note-windows.json", "sync-configs.public.json", "ai-config.public.json"] {
+                        if !root.join(name).try_exists().map_err(|_| "LOCAL_READ_FAILED")? {
+                            if let Some(value) = read_json::<Value>(&legacy.join(name))? {
+                                metadata.push((name, value));
+                            }
+                        }
+                    }
+                    let recovery_path = root.join("recovery.json");
+                    let mut recovery = if recovery_path.try_exists().map_err(|_| "LOCAL_READ_FAILED")? {
+                        None
+                    } else {
+                        read_json::<Vec<crate::recovery::Entry>>(&legacy.join("recovery.json"))?
+                    };
+                    let mut copied = HashMap::new();
                     for note in &mut notes {
-                        normalize_note(note)?;
-                        for attachment in
-                            note["attachments"].as_array_mut().ok_or("INVALID_NOTE")?
-                        {
-                            let old_path = attachment["storedPath"]
-                                .as_str()
-                                .ok_or("INVALID_ATTACHMENT_PATH")?;
-                            let source = managed_path(&legacy.join("attachments"), old_path)?;
-                            let destination = if let Some(path) = copied.get(&source) {
-                                path.clone()
-                            } else {
-                                let path = root
-                                    .join("attachments")
-                                    .join(source.file_name().ok_or("INVALID_ATTACHMENT_PATH")?);
-                                fs::copy(&source, &path).map_err(|_| "ATTACHMENT_COPY_FAILED")?;
-                                copied.insert(source, path.clone());
-                                path
-                            };
-                            attachment["storedPath"] = json!(destination);
-                        }
+                        migrate_note(note, legacy, &root, &mut copied)?;
                     }
+                    if let Some(entries) = &mut recovery {
+                        for entry in entries.iter_mut() {
+                            migrate_note(&mut entry.note, legacy, &root, &mut copied)?;
+                        }
+                        atomic_json(&recovery_path, entries)?;
+                    }
+                    for (name, value) in metadata {
+                        atomic_json(&root.join(name), &value)?;
+                    }
+                    // Publish the library last: an interrupted migration is retried on startup.
                     atomic_json(&notes_path, &notes)?;
-                    if !root.join("shortcuts.json").exists() {
-                        if let Some(value) = read_json::<Value>(&legacy.join("shortcuts.json"))? {
-                            atomic_json(&root.join("shortcuts.json"), &value)?;
-                        }
-                    }
                 }
             }
         }
@@ -191,7 +298,8 @@ impl Store {
         })
     }
 
-    pub fn replace(&mut self, notes: Vec<Value>) -> Result<(), String> {
+    pub fn replace(&mut self, mut notes: Vec<Value>) -> Result<(), String> {
+        for note in &mut notes { strip_attachment_previews(note); }
         atomic_json(&self.root.join("notes.json"), &notes)?;
         self.notes = notes;
         Ok(())
@@ -204,7 +312,7 @@ impl Store {
             return Err("INVALID_NOTE".into());
         }
         if let Some(previous) = self.notes.iter().find(|item| item["id"] == id) {
-            if ["content", "attachments", "theme", "themeOpacity"]
+            if ["content", "attachments", "theme", "themeOpacity", "favorite", "archived"]
                 .iter()
                 .all(|key| previous.get(*key) == note.get(*key))
             {
@@ -245,14 +353,12 @@ impl Store {
                 json!("local")
             },
         );
-        let mut next = vec![note.clone()];
-        next.extend(self.notes.iter().filter(|n| n["id"] != id).cloned());
-        self.replace(next)?;
-        Ok(note)
+        self.upsert(note)
     }
 
     pub fn delete(&mut self, id: &str) -> Result<(), String> {
         let snapshot = self.notes.iter().find(|note| note["id"] == id).cloned();
+        if let Some(note) = &snapshot { crate::recovery::record(&self.root, note, "deleted")?; }
         self.replace(
             self.notes
                 .iter()
@@ -269,11 +375,33 @@ impl Store {
         let (note, deleted_at) = self.last_deleted.as_ref().ok_or("RESTORE_UNAVAILABLE")?;
         if note["id"] != id || deleted_at.elapsed().as_secs() >= 10 { return Err("RESTORE_UNAVAILABLE".into()); }
         let restored = note.clone();
-        let mut next = vec![restored.clone()];
-        next.extend(self.notes.iter().cloned());
-        self.replace(next)?;
+        self.upsert(restored.clone())?;
         self.deleted.remove(id);
         self.last_deleted = None;
+        Ok(restored)
+    }
+
+    pub fn restore_recovery(&mut self, entry_id: &str) -> Result<Value, String> {
+        let entry = crate::recovery::list(&self.root)?.into_iter().find(|entry| entry.id == entry_id).ok_or("RECOVERY_MISSING")?;
+        let id = entry.note["id"].as_str().ok_or("INVALID_NOTE")?.to_owned();
+        let previous = self.notes.iter().find(|note| note["id"] == id);
+        if entry.reason == "deleted" && previous.is_some() { return Err("NOTE_ALREADY_EXISTS".into()); }
+        if let Some(previous) = previous { crate::recovery::record(&self.root, previous, "restore-before")?; }
+        let mut restored = entry.note;
+        normalize_note(&mut restored)?;
+        for attachment in restored["attachments"].as_array().unwrap() {
+            managed_path(&self.root.join("attachments"), attachment["storedPath"].as_str().ok_or("INVALID_ATTACHMENT_PATH")?)?;
+        }
+        if let Some(previous) = previous {
+            for key in ["feishu", "feishuTargets"] {
+                restored.as_object_mut().unwrap().remove(key);
+                if let Some(value) = previous.get(key) { restored[key] = value.clone(); }
+            }
+        }
+        restored["syncState"] = json!("local");
+        restored["updatedAt"] = json!(now());
+        self.upsert(restored.clone())?;
+        self.deleted.remove(&id);
         Ok(restored)
     }
 
@@ -346,16 +474,17 @@ impl Store {
         let mime = image
             .map(|(mime, _)| mime)
             .unwrap_or("application/octet-stream");
-        let mut attachment = json!({ "id": Uuid::new_v4().to_string(), "name": name,
+        let attachment = json!({ "id": Uuid::new_v4().to_string(), "name": name,
             "mimeType": mime, "size": bytes.len(), "storedPath": destination });
-        if image.is_some() && bytes.len() <= 3 * 1024 * 1024 {
-            attachment["previewDataUrl"] =
-                json!(format!("data:{mime};base64,{}", STANDARD.encode(&bytes)));
-        }
         Ok(attachment)
     }
 
+    #[cfg(test)]
     pub fn attachment_preview(&self, note_id: &str, attachment_id: &str) -> Result<String, String> {
+        image_preview(&self.attachment_preview_path(note_id, attachment_id)?)
+    }
+
+    pub fn attachment_preview_path(&self, note_id: &str, attachment_id: &str) -> Result<PathBuf, String> {
         let attachment = self
             .notes
             .iter()
@@ -363,22 +492,12 @@ impl Store {
             .and_then(|note| note["attachments"].as_array())
             .and_then(|items| items.iter().find(|item| item["id"] == attachment_id))
             .ok_or("INVALID_ATTACHMENT_PATH")?;
-        let path = managed_path(
+        managed_path(
             &self.root.join("attachments"),
             attachment["storedPath"]
                 .as_str()
                 .ok_or("INVALID_ATTACHMENT_PATH")?,
-        )?;
-        let file = fs::File::open(path).map_err(|_| "ATTACHMENT_PREVIEW_FAILED")?;
-        let mut bytes = Vec::new();
-        file.take((MAX_ATTACHMENT_BYTES + 1) as u64)
-            .read_to_end(&mut bytes)
-            .map_err(|_| "ATTACHMENT_PREVIEW_FAILED")?;
-        if bytes.len() > MAX_ATTACHMENT_BYTES {
-            return Err("ATTACHMENT_TOO_LARGE".into());
-        }
-        let (mime, _) = image_type(&bytes).ok_or("UNSUPPORTED_CLIPBOARD_IMAGE")?;
-        Ok(format!("data:{mime};base64,{}", STANDARD.encode(bytes)))
+        )
     }
 
     pub fn read_attachment_for_sync(
@@ -448,12 +567,7 @@ impl Store {
             "gif" => "image/gif",
             _ => "application/octet-stream",
         };
-        let mut attachment = json!({ "id":Uuid::new_v4().to_string(), "name":name, "mimeType":mime, "size":size, "storedPath":destination });
-        if mime.starts_with("image/") && size <= 3 * 1024 * 1024 {
-            let bytes = fs::read(&destination).map_err(|_| "ATTACHMENT_COPY_FAILED")?;
-            attachment["previewDataUrl"] =
-                json!(format!("data:{mime};base64,{}", STANDARD.encode(bytes)));
-        }
+        let attachment = json!({ "id":Uuid::new_v4().to_string(), "name":name, "mimeType":mime, "size":size, "storedPath":destination });
         Ok(attachment)
     }
 }
@@ -461,8 +575,165 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn png_bytes(width: u32, height: u32) -> Vec<u8> {
+        let image = image::DynamicImage::ImageRgba8(image::ImageBuffer::from_pixel(width, height, image::Rgba([80, 120, 200, 255])));
+        let mut output = std::io::Cursor::new(Vec::new());
+        image.write_to(&mut output, image::ImageFormat::Png).unwrap();
+        output.into_inner()
+    }
     fn note() -> Value {
         json!({"id":"one", "content":"first", "attachments":[], "createdAt":"old", "updatedAt":"old", "syncState":"local"})
+    }
+
+    #[test]
+    fn home_directory_library_prefers_tauri_over_electron_and_existing_target_wins() {
+        let home = tempfile::tempdir().unwrap();
+        let previous = tempfile::tempdir().unwrap();
+        let electron = tempfile::tempdir().unwrap();
+        let root = data_root(home.path());
+        assert_eq!(root, home.path().join(".stikiii"));
+        atomic_json(&electron.path().join("notes.json"), &vec![note()]).unwrap();
+        assert_eq!(migration_source(&root, previous.path(), Some(electron.path())).unwrap(), Some(electron.path().into()));
+        atomic_json(&previous.path().join("notes.json"), &Vec::<Value>::new()).unwrap();
+        assert_eq!(migration_source(&root, previous.path(), Some(electron.path())).unwrap(), Some(previous.path().into()));
+        fs::write(previous.path().join("notes.json"), "corrupt").unwrap();
+        let source = migration_source(&root, previous.path(), Some(electron.path())).unwrap();
+        assert!(Store::load(root.clone(), source.as_deref()).is_err());
+        assert!(!root.join("notes.json").exists());
+        atomic_json(&root.join("notes.json"), &Vec::<Value>::new()).unwrap();
+        assert_eq!(migration_source(&root, previous.path(), Some(electron.path())).unwrap(), None);
+        assert!(Store::load(root, Some(previous.path())).unwrap().notes.is_empty());
+    }
+
+    #[test]
+    fn directory_migration_preserves_settings_history_and_history_only_attachments() {
+        let old = tempfile::tempdir().unwrap();
+        let new = tempfile::tempdir().unwrap();
+        fs::create_dir(old.path().join("attachments")).unwrap();
+        let file = old.path().join("attachments/current.txt");
+        let history_file = old.path().join("attachments/deleted.txt");
+        fs::write(&file, "current attachment").unwrap();
+        fs::write(&history_file, "deleted attachment").unwrap();
+        let mut current = note();
+        current["attachments"] = json!([{"id":"file", "storedPath":file}]);
+        current["favorite"] = json!(true);
+        current["archived"] = json!(true);
+        current["feishuTargets"] = json!({"fixture": {"documentId":"existing", "chapter":{"blockIds":["chapter"]}}});
+        atomic_json(&old.path().join("notes.json"), &vec![current.clone()]).unwrap();
+        crate::recovery::record(old.path(), &current, "ai-before").unwrap();
+        let mut deleted = note();
+        deleted["id"] = json!("deleted");
+        deleted["attachments"] = json!([{"id":"history-file", "storedPath":history_file}]);
+        let deleted_entry = crate::recovery::record(old.path(), &deleted, "deleted").unwrap();
+        let metadata = [
+            ("shortcuts.json", json!([{"action":"newNote", "accelerator":"Ctrl+Alt+N"}])),
+            ("note-windows.json", json!({"one":{"x":100,"y":200,"width":440,"height":180,"open":true,"pinned":true,"pure":true,"normalHeight":390}})),
+            ("sync-configs.public.json", json!([{"provider":"feishu", "appId":"fixture", "appSecretConfigured":true}])),
+            ("ai-config.public.json", json!({"baseUrl":"https://api.example.com/v1", "model":"fixture", "apiKeyConfigured":true})),
+        ];
+        for (name, value) in &metadata { atomic_json(&old.path().join(name), value).unwrap(); }
+        fs::write(old.path().join("sync-config.bin"), "legacy encrypted credential").unwrap();
+        let old_notes = fs::read(old.path().join("notes.json")).unwrap();
+        let old_history = fs::read(old.path().join("recovery.json")).unwrap();
+        let store = Store::load(new.path().into(), Some(old.path())).unwrap();
+        assert_eq!(store.notes[0]["content"], current["content"]);
+        assert_eq!(store.notes[0]["favorite"], true);
+        assert_eq!(store.notes[0]["archived"], true);
+        assert_eq!(store.notes[0]["feishuTargets"], current["feishuTargets"]);
+        for (name, value) in &metadata {
+            assert_eq!(read_json::<Value>(&new.path().join(name)).unwrap().unwrap(), *value);
+        }
+        let windows = crate::note_windows::Registry::load(new.path()).unwrap();
+        let layout = &windows.layouts["one"];
+        assert!(layout.open && layout.pinned && layout.pure);
+        assert_eq!((layout.x, layout.y, layout.width, layout.height, layout.normal_height), (100, 200, 440.0, 180.0, Some(390.0)));
+        assert!(windows.bindings.is_empty());
+        assert!(!new.path().join("sync-config.bin").exists());
+        let history = crate::recovery::list(new.path()).unwrap();
+        let version = history.iter().find(|entry| entry.reason == "ai-before").unwrap();
+        assert_eq!(version.note["attachments"][0]["storedPath"], store.notes[0]["attachments"][0]["storedPath"]);
+        assert_eq!(fs::read(store.notes[0]["attachments"][0]["storedPath"].as_str().unwrap()).unwrap(), b"current attachment");
+        assert_eq!(fs::read(old.path().join("notes.json")).unwrap(), old_notes);
+        assert_eq!(fs::read(old.path().join("recovery.json")).unwrap(), old_history);
+        assert!(file.exists() && history_file.exists());
+        drop(store);
+        let mut restarted = Store::load(new.path().into(), Some(old.path())).unwrap();
+        let restored = restarted.restore_recovery(&deleted_entry.id).unwrap();
+        let restored_path = restored["attachments"][0]["storedPath"].as_str().unwrap();
+        assert!(managed_path(&new.path().join("attachments"), restored_path).is_ok());
+        assert_eq!(fs::read(restored_path).unwrap(), b"deleted attachment");
+        assert_eq!(fs::read_dir(new.path().join("attachments")).unwrap().count(), 2);
+    }
+
+    #[test]
+    fn migration_failure_does_not_publish_a_library_and_can_be_retried() {
+        let old = tempfile::tempdir().unwrap();
+        let new = tempfile::tempdir().unwrap();
+        fs::create_dir(old.path().join("attachments")).unwrap();
+        let missing = old.path().join("attachments/missing.txt");
+        let mut current = note();
+        current["attachments"] = json!([{"id":"file", "storedPath":missing}]);
+        atomic_json(&old.path().join("notes.json"), &vec![current]).unwrap();
+        let before = fs::read(old.path().join("notes.json")).unwrap();
+        assert!(Store::load(new.path().into(), Some(old.path())).is_err());
+        assert!(!new.path().join("notes.json").exists());
+        assert_eq!(fs::read(old.path().join("notes.json")).unwrap(), before);
+        fs::write(missing, "restored attachment").unwrap();
+        assert_eq!(Store::load(new.path().into(), Some(old.path())).unwrap().notes.len(), 1);
+    }
+
+    #[test]
+    fn corrupt_history_or_settings_stop_migration_without_overwriting_source() {
+        for name in ["recovery.json", "shortcuts.json"] {
+            let old = tempfile::tempdir().unwrap();
+            let new = tempfile::tempdir().unwrap();
+            atomic_json(&old.path().join("notes.json"), &vec![note()]).unwrap();
+            fs::write(old.path().join(name), "corrupt").unwrap();
+            assert!(Store::load(new.path().into(), Some(old.path())).is_err());
+            assert!(!new.path().join("notes.json").exists());
+            assert_eq!(fs::read_to_string(old.path().join(name)).unwrap(), "corrupt");
+        }
+    }
+
+    #[test]
+    fn migration_keeps_existing_settings_and_avoids_attachment_filename_collisions() {
+        let old = tempfile::tempdir().unwrap();
+        let new = tempfile::tempdir().unwrap();
+        fs::create_dir_all(old.path().join("attachments/a")).unwrap();
+        fs::create_dir_all(old.path().join("attachments/b")).unwrap();
+        fs::create_dir(new.path().join("attachments")).unwrap();
+        let first = old.path().join("attachments/a/file.txt");
+        let second = old.path().join("attachments/b/file.txt");
+        fs::write(&first, "first file").unwrap();
+        fs::write(&second, "second file").unwrap();
+        fs::write(new.path().join("attachments/file.txt"), "existing file").unwrap();
+        let mut current = note();
+        current["attachments"] = json!([{"id":"a", "storedPath":first}, {"id":"b", "storedPath":second}]);
+        atomic_json(&old.path().join("notes.json"), &vec![current]).unwrap();
+        atomic_json(&old.path().join("shortcuts.json"), &json!(["old"])).unwrap();
+        atomic_json(&new.path().join("shortcuts.json"), &json!(["new"])).unwrap();
+        let store = Store::load(new.path().into(), Some(old.path())).unwrap();
+        let attachments = store.notes[0]["attachments"].as_array().unwrap();
+        assert_ne!(attachments[0]["storedPath"], attachments[1]["storedPath"]);
+        assert_eq!(fs::read_to_string(attachments[0]["storedPath"].as_str().unwrap()).unwrap(), "first file");
+        assert_eq!(fs::read_to_string(attachments[1]["storedPath"].as_str().unwrap()).unwrap(), "second file");
+        assert_eq!(fs::read_to_string(new.path().join("attachments/file.txt")).unwrap(), "existing file");
+        assert_eq!(read_json::<Value>(&new.path().join("shortcuts.json")).unwrap().unwrap(), json!(["new"]));
+    }
+
+    #[test]
+    fn migration_rejects_attachments_outside_the_source_data_directory() {
+        let old = tempfile::tempdir().unwrap();
+        let new = tempfile::tempdir().unwrap();
+        fs::create_dir(old.path().join("attachments")).unwrap();
+        let outside = old.path().join("outside.txt");
+        fs::write(&outside, "outside").unwrap();
+        let mut current = note();
+        current["attachments"] = json!([{"id":"outside", "storedPath":outside}]);
+        atomic_json(&old.path().join("notes.json"), &vec![current]).unwrap();
+        assert!(Store::load(new.path().into(), Some(old.path())).is_err());
+        assert!(!new.path().join("notes.json").exists());
+        assert_eq!(fs::read_dir(new.path().join("attachments")).unwrap().count(), 0);
     }
 
     #[test]
@@ -588,14 +859,11 @@ mod tests {
     fn pasted_images_and_dropped_files_are_persisted_under_managed_paths() {
         let root = tempfile::tempdir().unwrap();
         let store = Store::load(root.path().into(), None).unwrap();
-        let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=";
-        let image = Store::import_bytes(&store.root, "image.png", png, true).unwrap();
+        let png = STANDARD.encode(png_bytes(1, 1));
+        let image = Store::import_bytes(&store.root, "image.png", &png, true).unwrap();
         assert!(image["name"].as_str().unwrap().starts_with("screenshot-"));
         assert_eq!(image["mimeType"], "image/png");
-        assert!(image["previewDataUrl"]
-            .as_str()
-            .unwrap()
-            .starts_with("data:image/png;base64,"));
+        assert!(image.get("previewDataUrl").is_none());
         let path = managed_path(
             &store.root.join("attachments"),
             image["storedPath"].as_str().unwrap(),
@@ -643,8 +911,7 @@ mod tests {
     fn image_preview_is_bound_to_saved_note_and_attachment_and_checks_actual_bytes() {
         let root = tempfile::tempdir().unwrap();
         let mut store = Store::load(root.path().into(), None).unwrap();
-        let mut bytes = b"\x89PNG\r\n\x1a\n".to_vec();
-        bytes.resize(3 * 1024 * 1024 + 1, 0);
+        let bytes = png_bytes(1600, 900);
         let image =
             Store::import_bytes(&store.root, "large.png", &STANDARD.encode(&bytes), true).unwrap();
         assert!(image.get("previewDataUrl").is_none());
@@ -653,12 +920,9 @@ mod tests {
         store.save(saved).unwrap();
         let id = image["id"].as_str().unwrap();
         let url = store.attachment_preview("one", id).unwrap();
-        assert_eq!(
-            STANDARD
-                .decode(url.strip_prefix("data:image/png;base64,").unwrap())
-                .unwrap(),
-            bytes
-        );
+        let thumbnail = image::load_from_memory(&STANDARD.decode(url.strip_prefix("data:image/png;base64,").unwrap()).unwrap()).unwrap();
+        assert_eq!((thumbnail.width(), thumbnail.height()), (640, 360));
+        assert_eq!(store.read_attachment_for_sync("one", id).unwrap().2, bytes);
         assert!(store.attachment_preview("other", id).is_err());
         assert!(store.attachment_preview("one", "other").is_err());
         let path = image["storedPath"].as_str().unwrap();
@@ -674,6 +938,66 @@ mod tests {
         );
         store.delete("one").unwrap();
         assert!(store.attachment_preview("one", id).is_err());
+    }
+
+    #[test]
+    fn thumbnails_reject_corrupt_and_excessive_dimensions_without_rewriting_originals() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("fixture");
+        for bytes in [b"\x89PNG\r\n\x1a\n".to_vec(), png_bytes(16_385, 1)] {
+            fs::write(&path, &bytes).unwrap();
+            assert!(image_preview(&path).is_err());
+            assert_eq!(fs::read(&path).unwrap(), bytes);
+        }
+        let image = image::DynamicImage::ImageRgb8(image::ImageBuffer::from_pixel(800, 400, image::Rgb([90, 120, 180])));
+        for format in [image::ImageFormat::Png, image::ImageFormat::Jpeg, image::ImageFormat::Gif, image::ImageFormat::WebP, image::ImageFormat::Bmp] {
+            let mut output = std::io::Cursor::new(Vec::new());
+            image.write_to(&mut output, format).unwrap();
+            let original = output.into_inner(); fs::write(&path, &original).unwrap();
+            let preview = image_preview(&path).unwrap();
+            let thumbnail = image::load_from_memory(&STANDARD.decode(preview.strip_prefix("data:image/png;base64,").unwrap()).unwrap()).unwrap();
+            assert_eq!((thumbnail.width(), thumbnail.height()), (640, 320));
+            assert_eq!(fs::read(&path).unwrap(), original);
+        }
+    }
+
+    #[test]
+    fn legacy_previews_are_removed_on_read_and_real_save_without_changing_note_metadata() {
+        let root = tempfile::tempdir().unwrap();
+        Store::load(root.path().into(), None).unwrap();
+        let path = root.path().join("attachments/fixture.png"); fs::write(&path, png_bytes(1, 1)).unwrap();
+        let mut original = note();
+        original["attachments"] = json!([{"id":"image","storedPath":path,"name":"fixture.png","mimeType":"image/png","size":1,"previewDataUrl":"data:image/png;base64,legacy"}]);
+        atomic_json(&root.path().join("notes.json"), &vec![original.clone()]).unwrap();
+        let mut store = Store::load(root.path().into(), None).unwrap();
+        assert!(store.notes[0]["attachments"][0].get("previewDataUrl").is_none());
+        assert_eq!(store.notes[0]["updatedAt"], original["updatedAt"]);
+        assert_eq!(fs::read_to_string(root.path().join("notes.json")).unwrap().contains("previewDataUrl"), true);
+        let mut changed = store.notes[0].clone(); changed["content"] = json!("new content");
+        store.save(changed).unwrap();
+        assert!(!fs::read_to_string(root.path().join("notes.json")).unwrap().contains("previewDataUrl"));
+        let entry = crate::recovery::record(root.path(), &original, "ai-before").unwrap();
+        assert!(entry.note["attachments"][0].get("previewDataUrl").is_none());
+        assert!(!fs::read_to_string(root.path().join("recovery.json")).unwrap().contains("previewDataUrl"));
+    }
+
+    #[test]
+    fn streamed_upsert_keeps_order_and_publishes_memory_only_after_disk_success() {
+        let root = tempfile::tempdir().unwrap();
+        let mut store = Store::load(root.path().into(), None).unwrap();
+        store.replace(Vec::new()).unwrap();
+        let mut first = note(); first["id"] = json!("first"); store.save(first).unwrap();
+        let mut second = note(); second["id"] = json!("second"); store.save(second).unwrap();
+        let mut changed = store.notes[1].clone(); changed["content"] = json!("updated");
+        let before = store.notes.clone();
+        fs::remove_file(root.path().join("notes.json")).unwrap();
+        fs::create_dir(root.path().join("notes.json")).unwrap();
+        assert!(store.save(changed.clone()).is_err());
+        assert_eq!(store.notes, before);
+        fs::remove_dir(root.path().join("notes.json")).unwrap();
+        store.save(changed).unwrap();
+        assert_eq!(store.notes.iter().map(|note| note["id"].as_str().unwrap()).collect::<Vec<_>>(), vec!["first", "second"]);
+        assert_eq!(read_json::<Vec<Value>>(&root.path().join("notes.json")).unwrap().unwrap(), store.notes);
     }
 
     #[test]

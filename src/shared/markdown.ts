@@ -1,13 +1,11 @@
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";
-import remarkStringify from "remark-stringify";
 import { toString } from "mdast-util-to-string";
 import type { Root, RootContent, PhrasingContent } from "mdast";
 import type { NoteAttachment } from "./types.js";
 
 const parser = unified().use(remarkParse).use(remarkGfm);
-const writer = unified().use(remarkStringify).use(remarkGfm);
 
 export function attachmentImageId(url: string): string | undefined {
   return /^attachment:([a-zA-Z0-9-]+)$/.exec(url)?.[1];
@@ -25,6 +23,11 @@ export type NoteContentBlock =
 // Only standalone, managed image paragraphs become editable image blocks.
 // Markdown examples inside code blocks keep their original text.
 export function noteContentBlocks(content: string, attachments: NoteAttachment[]): NoteContentBlock[] {
+  if (!attachments.some((item) => item.mimeType.startsWith("image/"))) return [{ type: "text", start: 0, end: content.length, text: content }];
+  return contentBlocksFromTree(content, attachments, parser.parse(content) as Root);
+}
+
+function contentBlocksFromTree(content: string, attachments: NoteAttachment[], tree: Root): NoteContentBlock[] {
   const blocks: NoteContentBlock[] = [];
   let cursor = 0;
   function addText(start: number, end: number, beforeImage: boolean): void {
@@ -33,10 +36,11 @@ export function noteContentBlocks(content: string, attachments: NoteAttachment[]
     if (beforeImage) end -= /(?:\r\n|\n|\r){1,2}$/.exec(content.slice(start, end))?.[0].length ?? 0;
     blocks.push({ type: "text", start, end, text: content.slice(start, end) });
   }
-  for (const node of (parser.parse(content) as Root).children) {
+  const images = new Map(attachments.filter((item) => item.mimeType.startsWith("image/")).map((item) => [item.id, item]));
+  for (const node of tree.children) {
     if (node.type !== "paragraph" || node.children.length !== 1 || node.children[0].type !== "image") continue;
     const id = attachmentImageId(node.children[0].url);
-    const attachment = attachments.find((item) => item.id === id && item.mimeType.startsWith("image/"));
+    const attachment = id ? images.get(id) : undefined;
     const start = node.position?.start.offset;
     const end = node.position?.end.offset;
     if (!attachment || start === undefined || end === undefined) continue;
@@ -65,6 +69,12 @@ export function removeAttachmentImages(content: string, id: string): string {
 
 // Existing image attachments remain visible without rewriting old notes on read.
 export function contentWithAttachmentImages(content: string, attachments: NoteAttachment[]): string {
+  const images = attachments.filter((item) => item.mimeType.startsWith("image/"));
+  if (!images.length) return content;
+  return appendMissingImages(content, images, parser.parse(content) as Root);
+}
+
+function appendMissingImages(content: string, images: NoteAttachment[], tree: Root): string {
   const referenced = new Set<string>();
   function visit(node: Root | RootContent | PhrasingContent): void {
     if (node.type === "image") {
@@ -73,9 +83,19 @@ export function contentWithAttachmentImages(content: string, attachments: NoteAt
     }
     if ("children" in node) node.children.forEach(visit);
   }
-  visit(parser.parse(content) as Root);
-  const missing = attachments.filter((item) => item.mimeType.startsWith("image/") && !referenced.has(item.id));
+  visit(tree);
+  const missing = images.filter((item) => !referenced.has(item.id));
   return missing.length ? content + (content ? "\n\n" : "") + missing.map(attachmentImageMarkdown).join("\n\n") + "\n\n" : content;
+}
+
+export function prepareNoteContent(content: string, attachments: NoteAttachment[]): { content: string; blocks: NoteContentBlock[] } {
+  const images = attachments.filter((item) => item.mimeType.startsWith("image/"));
+  if (!images.length) return { content, blocks: [{ type: "text", start: 0, end: content.length, text: content }] };
+  const tree = parser.parse(content) as Root;
+  const body = appendMissingImages(content, images, tree);
+  // Legacy attachments may append Markdown inside an unclosed code fence.
+  // Reparse only that compatibility case to preserve Markdown semantics.
+  return { content: body, blocks: contentBlocksFromTree(body, images, body === content ? tree : parser.parse(body) as Root) };
 }
 
 export function markdownTitle(content: string): string {
@@ -89,31 +109,4 @@ export function externalWebUrl(value: string): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-// Preserve remote image destinations as links; local attachment images are sent as
-// separate media blocks. The note itself remains unchanged; only the Feishu
-// payload is normalized.
-export function markdownForFeishu(content: string): { content: string; imageLinks: boolean } {
-  const tree = parser.parse(content) as Root;
-  let imageLinks = false;
-  function transform(node: Root | RootContent | PhrasingContent): void {
-    if (!("children" in node)) return;
-    node.children = node.children.map((child) => {
-      if (child.type === "image") {
-        if (attachmentImageId(child.url)) return { type: "text", value: child.alt || "" };
-        imageLinks = true;
-        return { type: "link", url: child.url, title: child.title, children: [{ type: "text", value: child.alt || child.url }] };
-      }
-      if (child.type === "imageReference") {
-        imageLinks = true;
-        return { type: "linkReference", identifier: child.identifier, label: child.label,
-          referenceType: child.referenceType, children: [{ type: "text", value: child.alt || child.identifier }] };
-      }
-      transform(child);
-      return child;
-    }) as typeof node.children;
-  }
-  transform(tree);
-  return { content: writer.stringify(tree), imageLinks };
 }

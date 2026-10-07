@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cancel-ai-note"
+description = "Enables the cancel_ai_note command without any pre-configured scope."
+commands.allow = ["cancel_ai_note"]
+
+[[permission]]
+identifier = "deny-cancel-ai-note"
+description = "Denies the cancel_ai_note command without any pre-configured scope."
+commands.deny = ["cancel_ai_note"]

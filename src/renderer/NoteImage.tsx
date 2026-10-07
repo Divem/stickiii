@@ -1,8 +1,10 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Image as ImageIcon } from "lucide-react";
 import type { NoteAttachment } from "../shared/types.js";
 import { t, type Locale } from "./i18n.js";
+
+const HOVER_PREVIEW_DELAY_MS = 500;
 
 export default function NoteImage({ noteId, attachment, locale, onOpen, ready = true, compact = false }: {
   noteId: string; attachment: NoteAttachment; locale: Locale; ready?: boolean; compact?: boolean;
@@ -13,10 +15,44 @@ export default function NoteImage({ noteId, attachment, locale, onOpen, ready = 
   const [expanded, setExpanded] = useState(false);
   const [position, setPosition] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewId = useId();
   const visible = compact && expanded && ready;
   const load = ready && (!compact || visible);
-  useEffect(() => { if (!ready) setExpanded(false); }, [ready]);
+  const cancelHover = useCallback(() => {
+    if (hoverTimer.current !== null) {
+      clearTimeout(hoverTimer.current);
+      hoverTimer.current = null;
+    }
+  }, []);
+  const closePreview = useCallback(() => {
+    cancelHover();
+    setExpanded(false);
+  }, [cancelHover]);
+  const startHover = () => {
+    cancelHover();
+    if (!compact || !ready) return;
+    hoverTimer.current = setTimeout(() => {
+      hoverTimer.current = null;
+      setExpanded(true);
+    }, HOVER_PREVIEW_DELAY_MS);
+  };
+  useEffect(() => {
+    closePreview();
+    if (!compact || !ready) return;
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") closePreview(); };
+    window.addEventListener("blur", closePreview);
+    window.addEventListener("resize", closePreview);
+    window.addEventListener("scroll", closePreview, true);
+    window.addEventListener("keydown", escape);
+    return () => {
+      cancelHover();
+      window.removeEventListener("blur", closePreview);
+      window.removeEventListener("resize", closePreview);
+      window.removeEventListener("scroll", closePreview, true);
+      window.removeEventListener("keydown", escape);
+    };
+  }, [compact, ready, noteId, attachment.id, cancelHover, closePreview]);
   useEffect(() => {
     setSource(attachment.previewDataUrl);
     setFailed(false);
@@ -42,18 +78,6 @@ export default function NoteImage({ noteId, attachment, locale, onOpen, ready = 
       left: Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)),
       top: Math.max(12, Math.min(below >= height || below >= above ? rect.bottom + 8 : rect.top - height - 8, window.innerHeight - height - 12)),
     });
-    const close = () => setExpanded(false);
-    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
-    window.addEventListener("blur", close);
-    window.addEventListener("resize", close);
-    window.addEventListener("scroll", close, true);
-    window.addEventListener("keydown", escape);
-    return () => {
-      window.removeEventListener("blur", close);
-      window.removeEventListener("resize", close);
-      window.removeEventListener("scroll", close, true);
-      window.removeEventListener("keydown", escape);
-    };
   }, [visible]);
   const image = source && !failed ? <img src={source} alt={attachment.name} loading="lazy" onError={() => setFailed(true)} />
       : <span className="note-image-placeholder" role="status"><ImageIcon size={22} />
@@ -62,8 +86,8 @@ export default function NoteImage({ noteId, attachment, locale, onOpen, ready = 
     <button ref={trigger} type="button" className={compact ? "note-image-link" : "note-image-open"}
       title={compact ? undefined : `${t("openImage", locale)} · ${attachment.name}`}
       aria-label={`${t("openImage", locale)} ${attachment.name}`} aria-describedby={visible && position ? previewId : undefined}
-      onMouseEnter={() => setExpanded(true)} onMouseLeave={() => setExpanded(false)}
-      onFocus={() => setExpanded(true)} onBlur={() => setExpanded(false)} onClick={() => onOpen(attachment)}>
+      onMouseEnter={startHover} onMouseLeave={closePreview}
+      onFocus={() => { cancelHover(); setExpanded(true); }} onBlur={closePreview} onClick={() => onOpen(attachment)}>
       {compact ? <><ImageIcon size={14} /><span>{attachment.name}</span></> : image}
     </button>
     {visible && position && createPortal(<div id={previewId} role="tooltip" className="note-image-hover-preview"

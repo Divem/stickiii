@@ -1,6 +1,7 @@
 mod ai;
 mod credentials;
 mod note_windows;
+mod recovery;
 mod storage;
 mod sync;
 
@@ -12,7 +13,7 @@ use std::{
     str::FromStr,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Mutex,
+        Arc, Mutex,
     },
 };
 use storage::Store;
@@ -27,9 +28,11 @@ struct AppState {
     configs: Mutex<ConfigStore>,
     ai_configs: Mutex<ai::ConfigStore>,
     ai_busy: AtomicBool,
+    ai_tasks: Mutex<ai::Tasks>,
     shortcuts: Mutex<Vec<ShortcutConfig>>,
     sessions: Mutex<HashMap<String, SyncSession>>,
     network: tokio::sync::Mutex<Network>,
+    preview_slots: Arc<tokio::sync::Semaphore>,
     ready: AtomicBool,
     exit_pending: AtomicBool,
     exit_allowed: AtomicBool,
@@ -209,7 +212,7 @@ fn register_shortcuts(app: &AppHandle, configs: &[ShortcutConfig]) -> Result<(),
 }
 
 #[tauri::command]
-fn list_notes(window: WebviewWindow, state: State<AppState>) -> Result<Vec<Value>, String> {
+fn list_notes(window: WebviewWindow, state: State<AppState>, note_ids: Option<Vec<String>>) -> Result<Vec<Value>, String> {
     note_windows::guard(&window, &state)?;
     let registry = state.windows.lock().map_err(|_| "WINDOW_UNAVAILABLE")?;
     let id = registry.note_for(window.label())?;
@@ -218,6 +221,7 @@ fn list_notes(window: WebviewWindow, state: State<AppState>) -> Result<Vec<Value
         .notes
         .iter()
         .filter(|note| id.is_none_or(|id| note["id"] == id))
+        .filter(|note| note_ids.as_ref().is_none_or(|ids| note["id"].as_str().is_some_and(|id| ids.iter().any(|requested| requested == id))))
         .cloned()
         .collect())
 }
@@ -343,6 +347,42 @@ async fn restore_note(window: WebviewWindow, app: AppHandle, note_id: String) ->
         registry.authorize("main", &note_id, true)?;
         let saved = state.store.lock().map_err(|_| "LOCAL_SAVE_FAILED")?.restore(&note_id)?;
         drop(registry);
+        note_windows::notify_note(&app, &saved, "main");
+        Ok(saved)
+    }).await.map_err(|_| "LOCAL_SAVE_FAILED")?
+}
+
+#[tauri::command]
+fn list_recovery(window: WebviewWindow, state: State<AppState>) -> Result<Vec<Value>, String> {
+    guard(&window)?;
+    let store = state.store.lock().map_err(|_| "LOCAL_READ_FAILED")?;
+    Ok(recovery::list(&store.root)?.iter().filter(|entry| entry.reason != "deleted" || !store.notes.iter().any(|note| note["id"] == entry.note["id"])).map(recovery::metadata).collect())
+}
+
+#[tauri::command]
+fn snapshot_ai_note(window: WebviewWindow, state: State<AppState>, note_id: String, expected_content: String) -> Result<(), String> {
+    note_windows::guard(&window, &state)?;
+    let registry = state.windows.lock().map_err(|_| "WINDOW_UNAVAILABLE")?;
+    registry.authorize(window.label(), &note_id, true)?;
+    let store = state.store.lock().map_err(|_| "LOCAL_READ_FAILED")?;
+    let note = store.notes.iter().find(|note| note["id"] == note_id).ok_or("NOTE_MISSING")?;
+    if note["content"].as_str() != Some(&expected_content) { return Err("NOTE_CHANGED".into()); }
+    recovery::record(&store.root, note, "ai-before")?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn restore_recovery(window: WebviewWindow, app: AppHandle, entry_id: String) -> Result<Value, String> {
+    guard(&window)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        if state.exit_pending.load(Ordering::SeqCst) { return Err("EXIT_PENDING".into()); }
+        let registry = state.windows.lock().map_err(|_| "WINDOW_UNAVAILABLE")?;
+        let mut store = state.store.lock().map_err(|_| "LOCAL_SAVE_FAILED")?;
+        let entry = recovery::list(&store.root)?.into_iter().find(|entry| entry.id == entry_id).ok_or("RECOVERY_MISSING")?;
+        registry.authorize("main", entry.note["id"].as_str().ok_or("INVALID_NOTE")?, true)?;
+        let saved = store.restore_recovery(&entry_id)?;
+        drop(store); drop(registry);
         note_windows::notify_note(&app, &saved, "main");
         Ok(saved)
     }).await.map_err(|_| "LOCAL_SAVE_FAILED")?
@@ -500,15 +540,17 @@ async fn attachment_preview(
 ) -> Result<String, String> {
     note_windows::guard(&window, &app.state::<AppState>())?;
     let label = window.label().to_owned();
+    let permit = app.state::<AppState>().preview_slots.clone().acquire_owned().await.map_err(|_| "ATTACHMENT_PREVIEW_FAILED")?;
     tauri::async_runtime::spawn_blocking(move || {
+        let _permit = permit;
         let state = app.state::<AppState>();
-        let registry = state.windows.lock().map_err(|_| "WINDOW_UNAVAILABLE")?;
-        registry.authorize(&label, &note_id, false)?;
-        let store = state
-            .store
-            .lock()
-            .map_err(|_| "ATTACHMENT_PREVIEW_FAILED")?;
-        store.attachment_preview(&note_id, &attachment_id)
+        let path = {
+            let registry = state.windows.lock().map_err(|_| "WINDOW_UNAVAILABLE")?;
+            registry.authorize(&label, &note_id, false)?;
+            let store = state.store.lock().map_err(|_| "ATTACHMENT_PREVIEW_FAILED")?;
+            store.attachment_preview_path(&note_id, &attachment_id)?
+        };
+        storage::image_preview(&path)
     })
     .await
     .map_err(|_| "ATTACHMENT_PREVIEW_FAILED")?
@@ -682,6 +724,7 @@ async fn execute_ai_note(
     note_id: String,
     operation: ai::Operation,
     legacy_polish: bool,
+    request_id: Option<String>,
 ) -> Result<Value, String> {
     note_windows::guard(&window, &state)?;
     state
@@ -711,11 +754,23 @@ async fn execute_ai_note(
     let Some(config) = config else {
         return Ok(json!({"status":"not-configured"}));
     };
-    Ok(if legacy_polish {
-        ai::polish(config, content).await
-    } else {
-        ai::transform(config, content, operation).await
-    })
+    let request_id = request_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    if uuid::Uuid::parse_str(&request_id).is_err() { return Err("INVALID_AI_REQUEST".into()); }
+    let cancellation = state.ai_tasks.lock().map_err(|_| "AI_UNAVAILABLE")?.begin(window.label(), &note_id, &request_id);
+    struct TaskGuard<'a>(&'a Mutex<ai::Tasks>, String);
+    impl Drop for TaskGuard<'_> {
+        fn drop(&mut self) { if let Ok(mut tasks) = self.0.lock() { tasks.finish(&self.1); } }
+    }
+    let _task = TaskGuard(&state.ai_tasks, request_id);
+    let work = async { if legacy_polish { ai::polish(config, content).await } else { ai::transform(config, content, operation).await } };
+    Ok(ai::cancellable(cancellation, work).await.unwrap_or_else(|| json!({"status":"cancelled"})))
+}
+
+#[tauri::command]
+fn cancel_ai_note(window: WebviewWindow, state: State<AppState>, note_id: String, request_id: String) -> Result<bool, String> {
+    note_windows::guard(&window, &state)?;
+    state.windows.lock().map_err(|_| "WINDOW_UNAVAILABLE")?.authorize(window.label(), &note_id, true)?;
+    Ok(state.ai_tasks.lock().map_err(|_| "AI_UNAVAILABLE")?.cancel(window.label(), &note_id, &request_id))
 }
 
 #[tauri::command]
@@ -723,8 +778,9 @@ async fn polish_note(
     window: WebviewWindow,
     state: State<'_, AppState>,
     note_id: String,
+    request_id: Option<String>,
 ) -> Result<Value, String> {
-    execute_ai_note(window, state, note_id, ai::Operation::Polish, true).await
+    execute_ai_note(window, state, note_id, ai::Operation::Polish, true, request_id).await
 }
 
 #[tauri::command]
@@ -733,8 +789,9 @@ async fn ai_note(
     state: State<'_, AppState>,
     note_id: String,
     operation: ai::Operation,
+    request_id: Option<String>,
 ) -> Result<Value, String> {
-    execute_ai_note(window, state, note_id, operation, false).await
+    execute_ai_note(window, state, note_id, operation, false, request_id).await
 }
 
 #[tauri::command]
@@ -806,6 +863,14 @@ fn start_dragging(window: WebviewWindow) -> Result<(), String> {
     window
         .start_dragging()
         .map_err(|_| "WINDOW_UNAVAILABLE".into())
+}
+#[tauri::command]
+fn set_note_pure_mode(window: WebviewWindow, state: State<AppState>, pure: bool) -> Result<(), String> {
+    note_windows::set_pure(&window, &state, pure)
+}
+#[tauri::command]
+fn fit_note_content(window: WebviewWindow, state: State<AppState>, height: f64) -> Result<(), String> {
+    note_windows::fit_content(&window, &state, height)
 }
 #[tauri::command]
 fn ready_window(
@@ -1273,6 +1338,9 @@ pub fn run() {
             save_note,
             delete_note,
             restore_note,
+            list_recovery,
+            snapshot_ai_note,
+            restore_recovery,
             create_note_copy,
             get_window_context,
             set_window_title,
@@ -1295,12 +1363,15 @@ pub fn run() {
             test_ai_connection,
             polish_note,
             ai_note,
+            cancel_ai_note,
             list_shortcuts,
             save_shortcuts,
             set_pinned_window,
             minimize_window,
             hide_window,
             start_dragging,
+            set_note_pure_mode,
+            fit_note_content,
             ready_window,
             complete_exit,
             request_exit,
@@ -1310,7 +1381,7 @@ pub fn run() {
             feishu_request
         ])
         .setup(|app| {
-            let root = app.path().app_data_dir()?;
+            let root = storage::data_root(&dirs::home_dir().ok_or("HOME_DIR_UNAVAILABLE")?);
             // Development QA can use isolated data without touching real notes.
             #[cfg(debug_assertions)]
             let root = match std::env::var_os("DESK_TABS_DEV_DATA_DIR") {
@@ -1323,13 +1394,15 @@ pub fn run() {
                 }
                 None => root,
             };
-            let legacy = dirs::data_dir().map(|path| path.join("desk-tabs"));
+            let electron = dirs::data_dir().map(|path| path.join("desk-tabs"));
             #[cfg(debug_assertions)]
             let legacy = if std::env::var_os("DESK_TABS_DEV_DATA_DIR").is_some() {
                 None
             } else {
-                legacy
+                storage::migration_source(&root, &app.path().app_data_dir()?, electron.as_deref())?
             };
+            #[cfg(not(debug_assertions))]
+            let legacy = storage::migration_source(&root, &app.path().app_data_dir()?, electron.as_deref())?;
             let store = Store::load(root, legacy.as_deref())?;
             let shortcuts =
                 storage::read_json::<Vec<ShortcutConfig>>(&store.root.join("shortcuts.json"))?
@@ -1344,9 +1417,11 @@ pub fn run() {
                 configs: Mutex::new(configs),
                 ai_configs: Mutex::new(ai_configs),
                 ai_busy: AtomicBool::new(false),
+                ai_tasks: Mutex::new(ai::Tasks::default()),
                 shortcuts: Mutex::new(shortcuts.clone()),
                 sessions: Mutex::new(HashMap::new()),
                 network: tokio::sync::Mutex::new(Network::new()?),
+                preview_slots: Arc::new(tokio::sync::Semaphore::new(2)),
                 ready: AtomicBool::new(false),
                 exit_pending: AtomicBool::new(false),
                 exit_allowed: AtomicBool::new(false),

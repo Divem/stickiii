@@ -5,7 +5,7 @@ use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
 };
-use tauri::{AppHandle, Manager, PhysicalPosition, WebviewWindow};
+use tauri::{AppHandle, LogicalSize, Manager, PhysicalPosition, WebviewWindow};
 use tokio::sync::oneshot;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -17,6 +17,10 @@ pub struct Layout {
     pub height: f64,
     pub pinned: bool,
     pub open: bool,
+    #[serde(default)]
+    pub pure: bool,
+    #[serde(default)]
+    pub normal_height: Option<f64>,
 }
 impl Default for Layout {
     fn default() -> Self {
@@ -27,6 +31,8 @@ impl Default for Layout {
             height: 390.0,
             pinned: false,
             open: false,
+            pure: false,
+            normal_height: None,
         }
     }
 }
@@ -132,7 +138,8 @@ impl Registry {
         };
         Ok(
             json!({"noteId": note_id, "openNoteIds": open, "readyNoteIds": ready,
-            "pinned": note_id.and_then(|id| self.layouts.get(id)).is_some_and(|layout| layout.pinned)}),
+            "pinned": note_id.and_then(|id| self.layouts.get(id)).is_some_and(|layout| layout.pinned),
+            "pure": note_id.and_then(|id| self.layouts.get(id)).is_some_and(|layout| layout.pure)}),
         )
     }
     pub fn acknowledge_exit(&mut self, request_id: &str, label: &str) -> Result<bool, String> {
@@ -218,7 +225,7 @@ pub fn fit(layout: &mut Layout, left: i32, top: i32, width: u32, height: u32, sc
         440.0
     };
     layout.height = if layout.height.is_finite() {
-        layout.height.clamp(260.0, 860.0)
+        layout.height.clamp(if layout.pure { 72.0 } else { 260.0 }, if layout.pure { (height as f64 / scale).max(72.0) } else { 860.0 })
     } else {
         390.0
     };
@@ -234,6 +241,51 @@ pub fn fit(layout: &mut Layout, left: i32, top: i32, width: u32, height: u32, sc
         .max(top);
     layout.x = layout.x.clamp(left, right);
     layout.y = layout.y.clamp(top, bottom);
+}
+
+fn apply_size(window: &WebviewWindow, layout: &mut Layout) -> Result<(), String> {
+    let monitor = window.current_monitor().map_err(|_| "WINDOW_UNAVAILABLE")?.ok_or("WINDOW_UNAVAILABLE")?;
+    let area = monitor.work_area();
+    fit(layout, area.position.x, area.position.y, area.size.width, area.size.height, monitor.scale_factor());
+    let max_height = if layout.pure { area.size.height as f64 / monitor.scale_factor() } else { 860.0 };
+    window.set_min_size(Some(LogicalSize::new(320.0, if layout.pure { 72.0 } else { 260.0 }))).map_err(|_| "WINDOW_UNAVAILABLE")?;
+    window.set_max_size(Some(LogicalSize::new(760.0, max_height))).map_err(|_| "WINDOW_UNAVAILABLE")?;
+    let scale = window.scale_factor().map_err(|_| "WINDOW_UNAVAILABLE")?;
+    let current = window.inner_size().map_err(|_| "WINDOW_UNAVAILABLE")?;
+    if (current.height as f64 / scale - layout.height).abs() >= 1.0 || (current.width as f64 / scale - layout.width).abs() >= 1.0 {
+        window.set_size(LogicalSize::new(layout.width, layout.height)).map_err(|_| "WINDOW_UNAVAILABLE")?;
+    }
+    window.set_position(PhysicalPosition::new(layout.x, layout.y)).map_err(|_| "WINDOW_UNAVAILABLE")?;
+    Ok(())
+}
+
+pub fn set_pure(window: &WebviewWindow, state: &AppState, pure: bool) -> Result<(), String> {
+    guard(window, state)?;
+    let mut registry = state.windows.lock().map_err(|_| "WINDOW_UNAVAILABLE")?;
+    let note_id = registry.note_for(window.label())?.ok_or("UNTRUSTED_WINDOW")?.to_owned();
+    registry.authorize(window.label(), &note_id, true)?;
+    let mut layout = capture(window, registry.layouts.get(&note_id))?;
+    if layout.pure == pure { return Ok(()); }
+    if pure { layout.normal_height = Some(layout.height); }
+    else { layout.height = layout.normal_height.take().unwrap_or(390.0); }
+    layout.pure = pure;
+    apply_size(window, &mut layout)?;
+    registry.layouts.insert(note_id, layout);
+    registry.persist()
+}
+
+pub fn fit_content(window: &WebviewWindow, state: &AppState, height: f64) -> Result<(), String> {
+    guard(window, state)?;
+    if !height.is_finite() || height <= 0.0 { return Err("INVALID_WINDOW_SIZE".into()); }
+    let mut registry = state.windows.lock().map_err(|_| "WINDOW_UNAVAILABLE")?;
+    let note_id = registry.note_for(window.label())?.ok_or("UNTRUSTED_WINDOW")?.to_owned();
+    registry.authorize(window.label(), &note_id, true)?;
+    let mut layout = capture(window, registry.layouts.get(&note_id))?;
+    if !layout.pure { return Err("PURE_MODE_REQUIRED".into()); }
+    layout.height = height;
+    apply_size(window, &mut layout)?;
+    registry.layouts.insert(note_id, layout);
+    Ok(())
 }
 
 pub fn open(app: &AppHandle, note_id: &str) -> Result<(), String> {
@@ -299,8 +351,8 @@ pub fn open(app: &AppHandle, note_id: &str) -> Result<(), String> {
         .accept_first_mouse(true)
         .title("贴贴便签")
         .inner_size(layout.width, layout.height)
-        .min_inner_size(320.0, 260.0)
-        .max_inner_size(760.0, 860.0)
+        .min_inner_size(320.0, if layout.pure { 72.0 } else { 260.0 })
+        .max_inner_size(760.0, if layout.pure { layout.height.max(860.0) } else { 860.0 })
         .decorations(false)
         .transparent(true)
         .shadow(false)
@@ -453,6 +505,34 @@ mod tests {
             (layout.x, layout.y, layout.width, layout.height),
             (-760, 30, 760.0, 860.0)
         );
+    }
+    #[test]
+    fn pure_layout_follows_short_and_long_content_within_scaled_work_area() {
+        let mut layout = Layout { pure: true, height: 42.0, x: -200, y: 900, normal_height: Some(390.0), ..Layout::default() };
+        fit(&mut layout, -1920, 30, 1920, 2100, 2.0);
+        assert_eq!(layout.height, 72.0);
+        layout.height = 4000.0;
+        fit(&mut layout, -1920, 30, 1920, 2100, 2.0);
+        assert_eq!(layout.height, 1050.0);
+        assert_eq!(layout.y, 30);
+        assert_eq!(layout.normal_height, Some(390.0));
+        layout.height = 180.0;
+        fit(&mut layout, -1920, 30, 1920, 2100, 2.0);
+        assert_eq!(layout.height, 180.0);
+    }
+    #[test]
+    fn legacy_layout_defaults_to_normal_and_pure_choice_survives_restart() {
+        let old: Layout = serde_json::from_value(json!({"x":100,"y":100,"width":440,"height":390,"pinned":false,"open":true})).unwrap();
+        assert!(!old.pure);
+        assert_eq!(old.normal_height, None);
+        let root = tempfile::tempdir().unwrap();
+        let mut registry = Registry::load(root.path()).unwrap();
+        registry.layouts.insert("one".into(), Layout { pure: true, height: 72.0, normal_height: Some(500.0), ..old });
+        registry.persist().unwrap();
+        let restored = Registry::load(root.path()).unwrap();
+        assert!(restored.layouts["one"].pure);
+        assert_eq!(restored.layouts["one"].normal_height, Some(500.0));
+        assert!(!restored.context("main").unwrap()["pure"].as_bool().unwrap());
     }
     #[test]
     fn exit_requires_every_window_and_rejects_old_or_duplicate_confirmations() {

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-note-pure-mode"
+description = "Enables the set_note_pure_mode command without any pre-configured scope."
+commands.allow = ["set_note_pure_mode"]
+
+[[permission]]
+identifier = "deny-set-note-pure-mode"
+description = "Denies the set_note_pure_mode command without any pre-configured scope."
+commands.deny = ["set_note_pure_mode"]

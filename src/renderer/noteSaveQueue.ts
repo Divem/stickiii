@@ -9,7 +9,7 @@ function sameAttachments(a: NoteAttachment[], b: NoteAttachment[]): boolean {
 }
 
 export function sameNoteDraft(a: Note, b: Note): boolean {
-  return a.content === b.content && (a.theme ?? "paper") === (b.theme ?? "paper") && sameAttachments(a.attachments, b.attachments);
+  return a.content === b.content && (a.theme ?? "paper") === (b.theme ?? "paper") && !!a.favorite === !!b.favorite && !!a.archived === !!b.archived && sameAttachments(a.attachments, b.attachments);
 }
 
 export function hasNoteContent(note: Note): boolean {
